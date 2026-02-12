@@ -38,6 +38,7 @@ export async function handleInteractions(interaction: Interaction) {
 				.setStyle(TextInputStyle.Short)
 				.setValue(nickname);
 
+
 			const typeInput = new TextInputBuilder()
 				.setCustomId("type")
 				.setLabel("Тип улики")

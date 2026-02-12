@@ -10,6 +10,7 @@ const client = new Client({
 	partials: [Partials.Channel]
 });
 
+
 client.once("ready", async () => {
 	console.log(`Бот запущен как ${client.user?.tag}`);
 

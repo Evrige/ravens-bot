@@ -16,6 +16,7 @@ export async function registerApplicationCommand(client: Client) {
 
 	const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
 
+
 	await rest.put(
 		Routes.applicationCommands(client.user!.id),
 		{ body: [command.toJSON()] }
