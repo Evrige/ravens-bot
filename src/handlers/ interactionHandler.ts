@@ -16,7 +16,9 @@ import {
 import { sendApplicationEmbed } from "../commands/application";
 
 export async function handleInteractions(interaction: Interaction) {
-
+	const STAFF_ROLE_IDS = process.env.STAFF_ROLE_IDS
+		? process.env.STAFF_ROLE_IDS.split(",").map(id => id.trim())
+		: [];
 	// ================= SLASH =================
 	if (interaction.isChatInputCommand()) {
 		if (interaction.commandName === "заявка") {
@@ -129,8 +131,31 @@ export async function handleInteractions(interaction: Interaction) {
 					type: ChannelType.GuildText,
 					parent: categoryId,
 					permissionOverwrites: [
-						{ id: interaction.guild!.id, deny: [PermissionFlagsBits.ViewChannel] },
-						{ id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel] }
+						// ❌ Скрыть от всех
+						{
+							id: interaction.guild!.id,
+							deny: [PermissionFlagsBits.ViewChannel]
+						},
+
+						// ✅ Автор заявки
+						{
+							id: interaction.user.id,
+							allow: [
+								PermissionFlagsBits.ViewChannel,
+								PermissionFlagsBits.SendMessages,
+								PermissionFlagsBits.ReadMessageHistory
+							]
+						},
+
+						// ✅ Все роли из массива STAFF_ROLE_IDS
+						...STAFF_ROLE_IDS.map(roleId => ({
+							id: roleId,
+							allow: [
+								PermissionFlagsBits.ViewChannel,
+								PermissionFlagsBits.SendMessages,
+								PermissionFlagsBits.ReadMessageHistory
+							]
+						}))
 					]
 				});
 			}
@@ -140,14 +165,21 @@ export async function handleInteractions(interaction: Interaction) {
 			const buttons = buildButtons(interaction.user.id);
 
 			if (appChannel?.isTextBased()) {
+
+				const mentionText = STAFF_ROLE_IDS
+					.map((id: any) => `<@&${id}>`)
+					.join(" ");
+
 				await appChannel.send({
+					content: mentionText || undefined,
 					embeds: [embed],
 					components: [buttons]
 				});
 			}
 
+
 			return interaction.reply({
-				content: `✅ Ваша заявка отправлена в канал <#${appChannel?.name}>`,
+				content: `✅ Ваша заявка отправлена в канал #${appChannel?.name}`,
 				ephemeral: true
 			});
 		}
@@ -290,7 +322,20 @@ async function processApplication(
 	const logHighChannelId = process.env.DB_LOG_HIGH_CHANNEL_ID!;
 	const appMessage = interaction.message;
 	if (!appMessage) return;
+	const member = interaction.member as GuildMember;
+	const STAFF_ROLE_IDS = process.env.STAFF_ROLE_IDS
+		? process.env.STAFF_ROLE_IDS.split(",").map(id => id.trim())
+		: [];
+	const hasPermission = member.roles.cache.some(role =>
+		STAFF_ROLE_IDS.includes(role.id)
+	);
 
+	if (!hasPermission) {
+		return interaction.reply({
+			content: "❌ У вас нет прав для этого действия.",
+			ephemeral: true
+		});
+	}
 	const appChannel = appMessage.channel;
 
 	// Получаем оригинальный embed
