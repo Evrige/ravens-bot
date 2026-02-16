@@ -14,11 +14,11 @@ import {
 } from "discord.js";
 
 import { sendApplicationEmbed } from "../commands/application";
-
+const STAFF_ROLE_IDS = process.env.STAFF_ROLE_IDS
+	? process.env.STAFF_ROLE_IDS.split(",").map(id => id.trim())
+	: [];
 export async function handleInteractions(interaction: Interaction) {
-	const STAFF_ROLE_IDS = process.env.STAFF_ROLE_IDS
-		? process.env.STAFF_ROLE_IDS.split(",").map(id => id.trim())
-		: [];
+
 	// ================= SLASH =================
 	if (interaction.isChatInputCommand()) {
 		if (interaction.commandName === "заявка") {
@@ -225,29 +225,37 @@ async function openApplicationModal(
 		.setCustomId("type")
 		.setLabel("Тип улики (1 или 0)")
 		.setStyle(TextInputStyle.Short)
-		.setValue(
+	if(data) {
+		typeInput.setValue(
 			data
 				? (data[1].value === "Обязательная" ? "1" : "0")
 				: ""
 		);
+	}
 
 	const storyInput = new TextInputBuilder()
 		.setCustomId("story")
 		.setLabel("Подробный рассказ")
 		.setStyle(TextInputStyle.Paragraph)
-		.setValue(data ? data[3].value : "");
+	if (data) {
+		storyInput.setValue(data[3].value);
+	}
 
 	const videoInput = new TextInputBuilder()
 		.setCustomId("video")
 		.setLabel("Ссылка на видео")
 		.setStyle(TextInputStyle.Short)
-		.setValue(data ? data[4].value : "");
+	if (data) {
+		videoInput.setValue(data[4].value);
+	}
 
 	const targetInput = new TextInputBuilder()
 		.setCustomId("target")
 		.setLabel("На кого улика")
 		.setStyle(TextInputStyle.Short)
-		.setValue(data ? data[2].value : "");
+	if (data) {
+		targetInput.setValue(data[2].value);
+	}
 
 	modal.addComponents(
 		new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
@@ -438,4 +446,3 @@ async function processApplication(
 		}
 	}
 }
-
