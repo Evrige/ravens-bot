@@ -1,7 +1,7 @@
 import { Client, GatewayIntentBits, Partials } from "discord.js";
 import * as dotenv from "dotenv";
 import { registerApplicationCommand } from "./commands/application";
-import {handleInteractions} from "./handlers/ interactionHandler";
+import {handleInteractions} from "./handlers/interactionHandler";
 import 'dotenv/config';
 dotenv.config();
 
