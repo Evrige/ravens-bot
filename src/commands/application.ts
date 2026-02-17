@@ -8,6 +8,7 @@ import {
 	REST,
 	Routes
 } from "discord.js";
+import {CUSTOM_IDS} from "../constants/customIds";
 
 export async function registerApplicationCommand(client: Client) {
 	const command = new SlashCommandBuilder()
@@ -25,7 +26,7 @@ export async function registerApplicationCommand(client: Client) {
 
 export async function sendApplicationEmbed(interaction: any) {
 	const button = new ButtonBuilder()
-		.setCustomId("open_application")
+		.setCustomId(CUSTOM_IDS.OPEN_APPLICATION)
 		.setLabel("ПОДАТЬ УЛИКУ")
 		.setStyle(ButtonStyle.Danger);
 

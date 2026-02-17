@@ -1,0 +1,7 @@
+import {config} from "./env";
+
+export const CHANNEL_IDS = {
+	LOG: config.DB_LOG_CHANNEL_ID,
+	LOG_HIGH: config.DB_LOG_HIGH_CHANNEL_ID,
+	APPLICATION_CATEGORY: config.DB_CATEGORY_ID
+};
