@@ -32,6 +32,47 @@ export async function handleInteractions(interaction: Interaction) {
 	// ================= BUTTONS =================
 	if (interaction.isButton()) {
 
+		// 🔹 КНОПКА COPY_TEXT
+		if (interaction.customId === CUSTOM_IDS.COPY_TEXT) {
+
+			const member = interaction.member as GuildMember;
+
+			const hasPermission = member.roles.cache.some(role =>
+				STAFF_ROLE_IDS.includes(role.id)
+			);
+
+			if (!hasPermission) {
+				return interaction.reply({
+					content: "❌ У вас нет прав.",
+					ephemeral: true
+				});
+			}
+
+			await interaction.deferReply({ ephemeral: true });
+
+			const msgEmbed = interaction.message.embeds[0];
+			if (!msgEmbed) {
+				return interaction.editReply("❌ Embed не найден.");
+			}
+
+			const getField = (name: string) =>
+				msgEmbed.fields.find(f => f.name === name)?.value ?? "";
+
+			const textToCopy =
+				`**Имя**\n${getField("Имя в игре")}\n\n` +
+				`**Ссылка**\n${getField("Видео")}\n\n` +
+				`**Подробный рассказ**\n${getField("Подробный рассказ")}\n\n`;
+
+			try {
+				await interaction.user.send({ content: textToCopy });
+				await interaction.editReply("✅ Текст отправлен в ЛС 📬");
+			} catch {
+				await interaction.editReply("❌ Не удалось отправить ЛС.");
+			}
+
+			return;
+		}
+
 		// Открыть форму
 		if (interaction.customId === CUSTOM_IDS.OPEN_APPLICATION) {
 			return openApplicationModal(interaction);
@@ -41,7 +82,6 @@ export async function handleInteractions(interaction: Interaction) {
 		if (interaction.customId.startsWith(CUSTOM_IDS.CHANGE)) {
 			const ownerId = interaction.customId.replace(CUSTOM_IDS.CHANGE, "");
 
-			// ❌ Если нажал не создатель
 			if (interaction.user.id !== ownerId) {
 				return interaction.reply({
 					content: "❌ Редактировать заявку может только её автор.",
@@ -89,7 +129,7 @@ export async function handleInteractions(interaction: Interaction) {
 	// ================= MODAL SUBMIT =================
 	if (interaction.isModalSubmit()) {
 
-		// ----------- РЕДАКТИРОВАНИЕ -----------
+		// ----------- РЕДАКТИРОВАНИЕ ----------- //
 		if (interaction.customId.startsWith("application_modal_edit_")) {
 
 			const messageId = interaction.customId.replace("application_modal_edit_", "");
@@ -109,7 +149,7 @@ export async function handleInteractions(interaction: Interaction) {
 			});
 		}
 
-		// ----------- НОВАЯ ЗАЯВКА -----------
+		// ----------- НОВАЯ ЗАЯВКА ----------- //
 		if (interaction.customId === "application_modal") {
 
 			const typeInput = interaction.fields.getTextInputValue("type").trim();
@@ -134,13 +174,10 @@ export async function handleInteractions(interaction: Interaction) {
 					type: ChannelType.GuildText,
 					parent: categoryId,
 					permissionOverwrites: [
-						// ❌ Скрыть от всех
 						{
 							id: interaction.guild!.id,
 							deny: [PermissionFlagsBits.ViewChannel]
 						},
-
-						// ✅ Автор заявки
 						{
 							id: interaction.user.id,
 							allow: [
@@ -149,8 +186,6 @@ export async function handleInteractions(interaction: Interaction) {
 								PermissionFlagsBits.ReadMessageHistory
 							]
 						},
-
-						// ✅ Все роли из массива STAFF_ROLE_IDS
 						...STAFF_ROLE_IDS.map(roleId => ({
 							id: roleId,
 							allow: [
@@ -164,7 +199,6 @@ export async function handleInteractions(interaction: Interaction) {
 			}
 
 			const embed = buildEmbedFromModal(interaction);
-
 			const buttons = buildButtons(interaction.user.id);
 
 			if (appChannel?.isTextBased()) {
@@ -177,9 +211,7 @@ export async function handleInteractions(interaction: Interaction) {
 					embeds: [embed],
 					components: [buttons]
 				});
-
 			}
-
 
 			return interaction.reply({
 				content: `✅ Ваша заявка отправлена в канал #${appChannel?.name}`,
@@ -187,7 +219,7 @@ export async function handleInteractions(interaction: Interaction) {
 			});
 		}
 
-		// ----------- ПРИЧИНА ОТКЛОНЕНИЯ -----------
+		// ----------- ПРИЧИНА ОТКЛОНЕНИЯ ----------- //
 		if (interaction.customId.startsWith("decline_reason_")) {
 			const reason = interaction.fields.getTextInputValue("reason");
 			const userId = interaction.customId.replace("decline_reason_", "");
@@ -197,18 +229,13 @@ export async function handleInteractions(interaction: Interaction) {
 	}
 }
 
-
-
-////////////////////////////////////////////////////////////
-// 🔹 Создание embed
-////////////////////////////////////////////////////////////
-
+// ============================================================
+// 🔹 Создание embed из modal
+// ============================================================
 function buildEmbedFromModal(interaction: any) {
 
 	const typeInput = interaction.fields.getTextInputValue("type").trim();
-	const typeText = typeInput === "1"
-		? "Обязательная"
-		: "Не обязательная";
+	const typeText = typeInput === "1" ? "Обязательная" : "Не обязательная";
 
 	return new EmbedBuilder()
 		.setTitle("Улика")
@@ -222,7 +249,3 @@ function buildEmbedFromModal(interaction: any) {
 		.setColor("Blue")
 		.setTimestamp();
 }
-
-
-
-
