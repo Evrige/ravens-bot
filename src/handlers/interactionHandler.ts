@@ -20,6 +20,7 @@ import {openApplicationModal} from "./application/openApplicationModal";
 import {buildButtons} from "./application/handleButtons";
 import {hiveCommand} from "../commands/detectives/application";
 import {familyCommand} from "../commands/ravens-family/application";
+import {createButton} from "../components/createButton";
 
 export async function handleInteractions(interaction: Interaction) {
 
@@ -38,7 +39,7 @@ export async function handleInteractions(interaction: Interaction) {
 	if (interaction.isButton()) {
 
 		// 🔹 КНОПКА COPY_TEXT
-		if (interaction.customId === CUSTOM_IDS.COPY_TEXT) {
+		if (interaction.customId.startsWith(CUSTOM_IDS.COPY_TEXT)) {
 
 			const member = interaction.member as GuildMember;
 
@@ -54,6 +55,40 @@ export async function handleInteractions(interaction: Interaction) {
 			}
 
 			await interaction.deferReply({ ephemeral: true });
+
+			const acceptButton = createButton({
+				customId: `${CUSTOM_IDS.ACCEPT_HIVE}${interaction.user.id}`,
+				label: "✅",
+				style: ButtonStyle.Success
+			})
+			const declineButton = createButton({
+				customId: `${CUSTOM_IDS.DECLINE_HIVE}${interaction.user.id}`,
+				label: "❌",
+				style: ButtonStyle.Danger
+			})
+
+			const message = interaction.message;
+
+			// Проверяем есть ли уже 👀
+			const existingReaction = message.reactions.cache.find(
+				r => r.emoji.name === "👀"
+			);
+
+			if (!existingReaction) {
+				// 👀 НЕТ — добавляем реакцию и кнопки
+
+				await message.react("👀");
+
+				const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+					acceptButton,
+					declineButton
+				);
+
+				await message.edit({
+					components: [...message.components, row] // добавляем, не перезаписываем
+				});
+
+			}
 
 			const msgEmbed = interaction.message.embeds[0];
 			if (!msgEmbed) {
@@ -77,7 +112,33 @@ export async function handleInteractions(interaction: Interaction) {
 
 			return;
 		}
+		// Проверка улики администрацией
+		if (
+			interaction.customId.startsWith(CUSTOM_IDS.ACCEPT_HIVE) ||
+			interaction.customId.startsWith(CUSTOM_IDS.DECLINE_HIVE)
+		) {
+			const message = interaction.message;
 
+			// Определяем какую кнопку нажали
+			const isAccept = interaction.customId.startsWith(CUSTOM_IDS.ACCEPT_HIVE);
+			const reactionEmoji = isAccept ? "✅" : "❌";
+
+			// Удаляем все реакции
+			await message.reactions.removeAll();
+
+			// Удаляем кнопки ACCEPT / DECLINE
+			await message.edit({
+				components: message.components.filter((row: any) =>
+					!row.components.some((btn: any) =>
+						btn.customId?.startsWith(CUSTOM_IDS.ACCEPT_HIVE) ||
+						btn.customId?.startsWith(CUSTOM_IDS.DECLINE_HIVE)
+					)
+				)
+			});
+
+			// Добавляем финальную реакцию
+			await message.react(reactionEmoji);
+		}
 		// Открыть форму
 		if (interaction.customId === CUSTOM_IDS.OPEN_APPLICATION) {
 			return openApplicationModal(interaction);
@@ -105,21 +166,21 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		// Принять
-		if (interaction.customId.startsWith("accept_")) {
-			const userId = interaction.customId.replace("accept_", "");
+		if (interaction.customId.startsWith(CUSTOM_IDS.ACCEPT)) {
+			const userId = interaction.customId.replace(CUSTOM_IDS.ACCEPT, "");
 			return processApplication(interaction, userId, true);
 		}
 
 		// Отклонить
-		if (interaction.customId.startsWith("decline_")) {
-			const userId = interaction.customId.replace("decline_", "");
+		if (interaction.customId.startsWith(CUSTOM_IDS.DECLINE)) {
+			const userId = interaction.customId.replace(CUSTOM_IDS.DECLINE, "");
 
 			const modal = new ModalBuilder()
-				.setCustomId(`decline_reason_${userId}`)
+				.setCustomId(`${CUSTOM_IDS.DECLINE_REASON}${userId}`)
 				.setTitle("Причина отклонения");
 
 			const reasonInput = new TextInputBuilder()
-				.setCustomId("reason")
+				.setCustomId(CUSTOM_IDS.REASON)
 				.setLabel("Причина")
 				.setStyle(TextInputStyle.Paragraph);
 
@@ -135,9 +196,9 @@ export async function handleInteractions(interaction: Interaction) {
 	if (interaction.isModalSubmit()) {
 
 		// ----------- РЕДАКТИРОВАНИЕ ----------- //
-		if (interaction.customId.startsWith("application_modal_edit_")) {
+		if (interaction.customId.startsWith(CUSTOM_IDS.MODAL_EDIT)) {
 
-			const messageId = interaction.customId.replace("application_modal_edit_", "");
+			const messageId = interaction.customId.replace(CUSTOM_IDS.MODAL_EDIT, "");
 			const channel = interaction.channel;
 
 			if (!channel?.isTextBased()) return;
@@ -155,7 +216,7 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		// ----------- НОВАЯ ЗАЯВКА ----------- //
-		if (interaction.customId === "application_modal") {
+		if (interaction.customId === CUSTOM_IDS.MODAL_NEW) {
 
 			const typeInput = interaction.fields.getTextInputValue("type").trim();
 

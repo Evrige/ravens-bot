@@ -1,6 +1,8 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, GuildMember, Message, TextChannel } from "discord.js";
 import { STAFF_ROLE_IDS } from "../../config/staff";
 import { CUSTOM_IDS } from "../../constants/customIds";
+import {createButton} from "../../components/createButton";
+import {config} from "../../config/env";
 
 export async function processApplication(
 	interaction: any,
@@ -8,8 +10,7 @@ export async function processApplication(
 	accepted: boolean,
 	reason?: string
 ) {
-	const logChannelId = process.env.DB_LOG_CHANNEL_ID!;
-	const logHighChannelId = process.env.DB_LOG_HIGH_CHANNEL_ID!;
+	const logChannelId = config.DB_LOG_CHANNEL_ID;
 
 	const appMessage = interaction.message;
 	if (!appMessage) return;
@@ -40,21 +41,28 @@ export async function processApplication(
 	}
 
 	const logChannel = interaction.guild?.channels.cache.get(logChannelId);
-	const logHighChannel = interaction.guild?.channels.cache.get(logHighChannelId);
 
 	if (logChannel?.isTextBased()) {
-		await logChannel.send({ embeds: [resultEmbed] });
-	}
 
-	if (accepted && logHighChannel?.isTextBased()) {
-		const copyButton = new ButtonBuilder()
-			.setCustomId(CUSTOM_IDS.COPY_TEXT)
-			.setLabel("📋 Скопировать текст")
-			.setStyle(ButtonStyle.Primary);
+		const components = [];
 
-		const row = new ActionRowBuilder<ButtonBuilder>().addComponents(copyButton);
+		if (accepted) {
+			const copyButton = createButton({
+				customId: `${CUSTOM_IDS.COPY_TEXT}${interaction.user.id}`,
+				label: "📋 Скопировать текст",
+				style: ButtonStyle.Primary
+			});
 
-		await (logHighChannel as TextChannel).send({ embeds: [resultEmbed], components: [row] });
+			const row = new ActionRowBuilder<ButtonBuilder>()
+				.addComponents(copyButton);
+
+			components.push(row);
+		}
+
+		await logChannel.send({
+			embeds: [resultEmbed],
+			components
+		});
 	}
 
 	if (!interaction.replied && !interaction.deferred) {
