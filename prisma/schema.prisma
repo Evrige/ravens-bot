@@ -1,0 +1,104 @@
+// schema.prisma
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String       @id
+  balance        BigInt       @default(0)
+  timeInVoice    BigInt       @default(0)
+  warn           Int          @default(0)
+  isBan          Boolean      @default(false)
+  isMarry        Boolean      @default(false)
+  level          Int          @default(0)
+  messageCount   BigInt       @default(0)
+
+  // Relations
+  roles          Role[]
+  selling        Selling[]
+  hives          Hive[]
+  applications   Application[] @relation("UserApplications")
+  recruitApps    Application[] @relation("RecruitApplications")
+}
+
+model Market {
+  id      BigInt    @id @default(autoincrement())
+  name    String
+  price   BigInt
+
+  selling Selling[]
+}
+
+model Selling {
+  id        BigInt   @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  market    Market   @relation(fields: [marketId], references: [id])
+  marketId  BigInt
+  createdAt DateTime @default(now())
+}
+
+model Organisation {
+  id    BigInt   @id @default(autoincrement())
+  name  String
+  type  OrgType
+
+  hives Hive[]
+}
+
+model Hive {
+  id             BigInt        @id @default(autoincrement())
+  user           User           @relation(fields: [userId], references: [id])
+  userId         String
+  organisation   Organisation   @relation(fields: [organisationId], references: [id])
+  organisationId BigInt
+  type           String
+  link           String
+  form           Form
+  story          String
+  createdAt      DateTime       @default(now())
+  status         HiveStatus     @default(PENDING)
+}
+
+model Application {
+  id         BigInt   @id @default(autoincrement())
+  user       User     @relation("UserApplications", fields: [userId], references: [id])
+  userId     String
+  name       String
+  age        Int
+  target     String
+  link       String
+  howToKnow  String
+  isAccepted Boolean  @default(false)
+  recruit    User?    @relation("RecruitApplications", fields: [recruitId], references: [id])
+  recruitId  String?
+}
+
+model Role {
+  id      String  @id
+  user    User    @relation(fields: [userId], references: [id])
+  userId  String
+  price   BigInt  @default(0)
+}
+
+// Enums
+enum Form {
+  ONE_HALF   @map("1/2")
+  ONE_QUARTER @map("1/4")
+  ONE_FIFTH   @map("1/5")
+}
+
+enum OrgType {
+  FAMILY
+  FRACTION
+}
+
+enum HiveStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}

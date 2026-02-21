@@ -4,6 +4,7 @@
 
 export const CUSTOM_IDS = {
 	OPEN_APPLICATION: "open_application",
+	OPEN_FAMILY_APPLICATION: "OPEN_FAMILY_APPLICATION",
 	MODAL_NEW: "application_modal",
 	MODAL_EDIT: "application_modal_edit_",
 	DECLINE_REASON: "decline_reason_",
@@ -17,3 +18,8 @@ export const CUSTOM_IDS = {
 	VIDEO: "video",
 	TARGET: "target",
 };
+
+export const CUSTOM_COMMAND = {
+	DB_APPLICATION: "заявка_улики",
+	FAMILY_APPLICATION: "заявк_в_семью"
+}

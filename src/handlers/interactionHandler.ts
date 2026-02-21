@@ -13,22 +13,27 @@ import {
 	Message
 } from "discord.js";
 import 'dotenv/config';
-import { sendApplicationEmbed } from "../commands/application";
 import {STAFF_ROLE_IDS} from "../config/staff";
-import {CUSTOM_IDS} from "../constants/customIds";
+import {CUSTOM_COMMAND, CUSTOM_IDS} from "../constants/customIds";
 import {processApplication} from "./application/processApplication";
 import {openApplicationModal} from "./application/openApplicationModal";
 import {buildButtons} from "./application/handleButtons";
+import {hiveCommand} from "../commands/detectives/application";
+import {familyCommand} from "../commands/ravens-family/application";
 
 export async function handleInteractions(interaction: Interaction) {
 
 	// ================= SLASH =================
 	if (interaction.isChatInputCommand()) {
-		if (interaction.commandName === "заявка") {
-			return sendApplicationEmbed(interaction);
+		if (interaction.commandName === CUSTOM_COMMAND.DB_APPLICATION) {
+			return hiveCommand.execute(interaction);
 		}
 	}
-
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.FAMILY_APPLICATION) {
+			return familyCommand.execute(interaction);
+		}
+	}
 	// ================= BUTTONS =================
 	if (interaction.isButton()) {
 
