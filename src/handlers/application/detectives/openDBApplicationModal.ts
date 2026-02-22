@@ -1,8 +1,8 @@
 import {ActionRowBuilder, GuildMember, ModalBuilder, TextInputBuilder, TextInputStyle} from "discord.js";
-import {CUSTOM_IDS} from "../../constants/customIds";
-import {createInput} from "../../components/createInput";
+import {CUSTOM_IDS} from "../../../constants/customIds";
+import {createInput} from "../../../components/createInput";
 
-export async function openApplicationModal(
+export async function openDBApplicationModal(
 	interaction: any,
 	data?: any,
 	messageId?: string

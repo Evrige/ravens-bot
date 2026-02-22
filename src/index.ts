@@ -21,7 +21,7 @@ const hiveCommands = [hiveCommand.data.toJSON()];
 // Настройка серверов и команд для каждого
 const serversCommands = [
 	{
-		guildId: "784348300810780683", // Тестовый сервер
+		guildId: `${process.env.SERVER_GUID}`, // Тестовый сервер
 		commands: [...commands, ...hiveCommands] // объединяем все команды
 	},
 	// Можно добавить другие сервера:

@@ -1,10 +1,10 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, GuildMember, Message, TextChannel } from "discord.js";
-import { STAFF_ROLE_IDS } from "../../config/staff";
-import { CUSTOM_IDS } from "../../constants/customIds";
-import {createButton} from "../../components/createButton";
-import {config} from "../../config/env";
+import { DB_STAFF_ROLE_IDS } from "../../../config/staff";
+import { CUSTOM_IDS } from "../../../constants/customIds";
+import {createButton} from "../../../components/createButton";
+import {config} from "../../../config/env";
 
-export async function processApplication(
+export async function processDBApplication(
 	interaction: any,
 	userId: string,
 	accepted: boolean,
@@ -16,7 +16,7 @@ export async function processApplication(
 	if (!appMessage) return;
 
 	const member = interaction.member as GuildMember;
-	const hasPermission = member.roles.cache.some(role => STAFF_ROLE_IDS.includes(role.id));
+	const hasPermission = member.roles.cache.some(role => DB_STAFF_ROLE_IDS.includes(role.id));
 	if (!hasPermission) {
 		return interaction.reply({ content: "❌ У вас нет прав", ephemeral: true });
 	}
