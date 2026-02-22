@@ -1,85 +1,122 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, GuildMember, Message, TextChannel } from "discord.js";
-import {DB_STAFF_ROLE_IDS, FAMILY_RECRUIT_ROLE_IDS} from "../../../config/staff";
-import { CUSTOM_IDS } from "../../../constants/customIds";
-import {createButton} from "../../../components/createButton";
-import {config} from "../../../config/env";
+// processFamilyApplication.ts
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, TextChannel } from "discord.js";
+import { prisma } from "../../../utils/prisma";
+import { FAMILY_USER_ROLE_IDS } from "../../../config/staff";
+import { config } from "../../../config/env";
 
 export async function processFamilyApplication(
 	interaction: any,
-	userId: string,
+	applicationId: bigint,
 	accepted: boolean,
-	reason?: string
+	reason?: string,
+	nicknameFromApplication?: string
 ) {
-	const RecruitChannelId = config.FAMILY_RECRUIT_CHANNEL_ID;
+	try {
+		const RecruitLogID = config.FAMILY_RECRUIT_LOG_ID;
+		const moderator = interaction.user;
 
-	const appMessage = interaction.message;
-	if (!appMessage) return;
+		// Получаем конкретную заявку по уникальному ID
+		const application = await prisma.application.findUnique({
+			where: { id: applicationId }
+		});
 
+		if (!application) {
+			console.error("Заявка не найдена в базе", applicationId);
+			if (!interaction.replied && !interaction.deferred) {
+				await interaction.reply({ content: "Заявка не найдена ❌", ephemeral: true });
+			}
+			return;
+		}
 
+		// Обновляем заявку: recruitId только если принята
+		await prisma.application.update({
+			where: { id: applicationId },
+			data: {
+				isAccepted: accepted,
+				recruitId: moderator.id
+			}
+		});
 
-	const originalEmbed = appMessage.embeds[0];
-	if (!originalEmbed) return;
+		// --- Логируем полную заявку
+		let resultEmbed: EmbedBuilder;
 
-	const authorUser = await interaction.client.users.fetch(userId).catch(() => null);
-	const moderator = interaction.user;
+// Если interaction.message есть (для кнопок)
+		if (interaction.message?.embeds[0]) {
+			// Копируем весь оригинальный embed
+			const originalEmbed = interaction.message.embeds[0].toJSON();
+			resultEmbed = EmbedBuilder.from(originalEmbed)
+				.setColor(accepted ? "Green" : "Red");
 
-	const resultEmbed = EmbedBuilder.from(originalEmbed)
-		.setColor(accepted ? "Green" : "Red")
-		.addFields(
-			{ name: "👤 Автор заявки", value: authorUser ? `<@${authorUser.id}>` : "Не найден", inline: true },
-			{ name: accepted ? "✅ Принял" : "❌ Отклонил", value: `<@${moderator.id}>`, inline: true }
-		)
-		.setFooter({ text: "by Evri" })
-		.setTimestamp();
+			// Добавляем поле с модератором
+			resultEmbed.addFields({
+				name: accepted ? "✅ Принял" : "❌ Отклонил",
+				value: `<@${moderator.id}>`,
+				inline: false
+			});
 
-	if (!accepted && reason) {
-		resultEmbed.addFields({ name: "📌 Причина", value: reason });
-	}
+			// Если отклонение, добавляем причину
+			if (!accepted && reason) {
+				resultEmbed.addFields({
+					name: "📌 Причина",
+					value: reason
+				});
+			}
+		} else {
+			// fallback на старый вариант, если interaction.message нет
+			resultEmbed = new EmbedBuilder()
+				.setTitle(`Заявка пользователя ${application.userId}`)
+				.setColor(accepted ? "Green" : "Red")
+				.addFields({ name: accepted ? "✅ Принял" : "❌ Отклонил", value: `<@${moderator.id}>`, inline: true })
+				.setFooter({ text: "by Evri" })
+				.setTimestamp();
 
-	// const logChannel = interaction.guild?.channels.cache.get(logChannelId);
+			if (!accepted && reason) {
+				resultEmbed.addFields({ name: "📌 Причина", value: reason });
+			}
+		}
 
-	// if (logChannel?.isTextBased()) {
-	//
-	// 	const components = [];
-	//
-	// 	if (accepted) {
-	// 		const copyButton = createButton({
-	// 			customId: `${CUSTOM_IDS.COPY_TEXT}${interaction.user.id}`,
-	// 			label: "📋 Скопировать текст",
-	// 			style: ButtonStyle.Primary
-	// 		});
-	//
-	// 		const row = new ActionRowBuilder<ButtonBuilder>()
-	// 			.addComponents(copyButton);
-	//
-	// 		components.push(row);
-	// 	}
-	//
-	// 	await logChannel.send({
-	// 		embeds: [resultEmbed],
-	// 		components
-	// 	});
-	// }
+		// --- Отправляем в лог-канал
+		const logChannel = interaction.guild.channels.cache.get(RecruitLogID) as TextChannel;
+		if (logChannel) {
+			await logChannel.send({ embeds: [resultEmbed] }).catch(console.error);
+		}
 
-	if (!interaction.replied && !interaction.deferred) {
-		await interaction.reply({ content: accepted ? "Заявка принята ✅" : "Заявка отклонена ❌", ephemeral: true });
-	}
+		// --- ЛС пользователю
+		const authorUser = await interaction.client.users.fetch(application.userId).catch(() => null);
+		if (authorUser) {
+			await authorUser.send(
+				accepted
+					? `Поздравляем! Ваша заявка принята ✅`
+					: `К сожалению, ваша заявка отклонена ❌${reason ? `\nПричина: ${reason}` : ""}`
+			).catch(() => {});
+		}
 
-	await appMessage.delete().catch(() => {});
+		// --- Выдаём роль на сервере если приняли
+		if (accepted) {
+			const member = await interaction.guild.members.fetch(application.userId).catch(() => null);
+			if (member && FAMILY_USER_ROLE_IDS.length > 0) {
+				// Добавляем все роли из массива
+				await member.roles.add(FAMILY_USER_ROLE_IDS).catch(() => {});
 
-	const appChannel = appMessage.channel;
-	if (appChannel?.isTextBased()) {
-		const messages = await appChannel.messages.fetch({ limit: 50 }).catch(() => null);
-		if (!messages) return;
+				// Устанавливаем никнейм, если передан
+				if (nicknameFromApplication) {
+					await member.setNickname(nicknameFromApplication).catch(() => {});
+				}
+			}
+		}
 
-		const remaining = messages.filter((msg: Message) =>
-			msg.author.id === interaction.client.user!.id &&
-			msg.embeds.length > 0 &&
-			msg.embeds[0].title === "Улика"
-		);
+		// --- Ответ модератору
+		if (!interaction.replied && !interaction.deferred) {
+			await interaction.reply({
+				content: accepted ? "Заявка принята ✅" : "Заявка отклонена ❌",
+				ephemeral: true
+			});
+		}
 
-		if (remaining.size === 0) {
-			await appChannel.delete().catch(() => {});
+	} catch (err) {
+		console.error("Ошибка processFamilyApplication:", err);
+		if (!interaction.replied) {
+			await interaction.reply({ content: "Произошла ошибка ❌", ephemeral: true });
 		}
 	}
 }

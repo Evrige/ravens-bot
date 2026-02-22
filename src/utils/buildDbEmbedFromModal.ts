@@ -15,5 +15,6 @@ export function buildDbEmbedFromModal(interaction: any) {
 			{ name: "На кого улика", value: interaction.fields.getTextInputValue("target") }
 		)
 		.setColor("Blue")
+		.setFooter({ text: "by Evri" })
 		.setTimestamp();
 }

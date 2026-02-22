@@ -1,60 +1,98 @@
-import { Client, GatewayIntentBits, Partials, REST, Routes } from "discord.js";
+import {
+	Client,
+	GatewayIntentBits,
+	Partials,
+	REST,
+	Routes
+} from "discord.js";
 import * as dotenv from "dotenv";
-import 'dotenv/config';
+import "dotenv/config";
 
-// Импорт команд
-import { hiveCommand } from "./commands/detectives/application";
+// ==== Импорт команд ====
 import { familyCommand } from "./commands/ravens-family/application";
+import { hiveCommand } from "./commands/detectives/application";
+
+// ==== Импорт обработчиков ====
+import { handleInteractions } from "./handlers/interactionHandler";
+import { startRecruitStatsUpdater } from "./services/recruitStatsUpdater";
+import {recruitStatsCommand} from "./commands/ravens-family/recruit-stats";
+import {staffListCommand} from "./commands/ravens-family/staff-list";
+import {syncMembers} from "./utils/syncMembers";
+import {config} from "./config/env";
 
 dotenv.config();
 
-// Создаем клиента
+// ==== Создание клиента ====
 const client = new Client({
-	intents: [GatewayIntentBits.Guilds],
+	intents: [
+		GatewayIntentBits.Guilds,
+		GatewayIntentBits.GuildMembers,
+	],
 	partials: [Partials.Channel]
 });
 
-// Команды
-const commands = [familyCommand.data.toJSON()];
-const hiveCommands = [hiveCommand.data.toJSON()];
+// =======================================================
+// Команды для разных серверов
+// =======================================================
 
-// Настройка серверов и команд для каждого
+const familyCommands = [
+	familyCommand.data.toJSON(),
+	recruitStatsCommand.data.toJSON(),
+	staffListCommand.data.toJSON()
+];
+
+const hiveCommands = [
+	hiveCommand.data.toJSON()
+];
+
+// const serversCommands = [
+// 	{
+// 		guildId: process.env.FAMILY_SERVER_GUID!,
+// 		commands: familyCommands
+// 	},
+// 	{
+// 		guildId: process.env.FAMILY_SERVER_GUID!,
+// 		commands: hiveCommands
+// 	}
+// ];
 const serversCommands = [
 	{
-		guildId: `${process.env.SERVER_GUID}`, // Тестовый сервер
-		commands: [...commands, ...hiveCommands] // объединяем все команды
-	},
-	// Можно добавить другие сервера:
-	// {
-	//     guildId: "ID_другого_сервера",
-	//     commands: [...другие_команды]
-	// }
+		guildId: process.env.FAMILY_SERVER_GUID!,
+		commands: [...familyCommands, ...hiveCommands]
+	}
 ];
+// =======================================================
+// Ready
+// =======================================================
 
 client.once("ready", async () => {
 	console.log(`Бот запущен как ${client.user?.tag}`);
 
 	const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
 
-	// Регистрируем команды на всех серверах
+	// Регистрация команд по серверам
 	for (const { guildId, commands } of serversCommands) {
 		try {
 			await rest.put(
 				Routes.applicationGuildCommands(client.user!.id, guildId),
 				{ body: commands }
 			);
-			console.log(`Команды успешно зарегистрированы на сервере ${guildId}`);
+			await syncMembers(client, config.FAMILY_SERVER_GUID)
+			console.log(`✅ Команды зарегистрированы на сервере ${guildId}`);
 		} catch (error) {
-			console.error(`Ошибка при регистрации команд на сервере ${guildId}:`, error);
+			console.error(
+				`❌ Ошибка регистрации команд на сервере ${guildId}:`,
+				error
+			);
 		}
 	}
+
+	// Запуск автообновления статистики
+	startRecruitStatsUpdater(client);
 });
 
-// Обработка взаимодействий
-import { handleInteractions } from "./handlers/interactionHandler";
 client.on("interactionCreate", async (interaction) => {
 	await handleInteractions(interaction);
 });
 
-// Логинимся
 client.login(process.env.TOKEN);
