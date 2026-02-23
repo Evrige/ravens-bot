@@ -52,7 +52,7 @@ export const staffListCommand = {
 			};
 
 			const embed = new EmbedBuilder()
-				.setTitle("📊 Статистика STAFF по ролям")
+				.setTitle("Семья")
 				.setColor("Purple")
 				.setDescription(await generateDescription())
 				.setFooter({ text: "Обновляется каждые 30 секунд • by Evri" })
@@ -63,7 +63,7 @@ export const staffListCommand = {
 			// Автообновление
 			setInterval(async () => {
 				const updatedEmbed = new EmbedBuilder()
-					.setTitle("📊 Статистика STAFF по ролям")
+					.setTitle("Семья")
 					.setColor("Purple")
 					.setDescription(await generateDescription())
 					.setFooter({ text: "Обновляется каждые 30 секунд • by Evri" })

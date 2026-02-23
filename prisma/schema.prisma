@@ -85,6 +85,12 @@ model Role {
   price   BigInt  @default(0)
 }
 
+model BotMessage {
+  type      String  @id
+  messageId String
+  channelId String
+}
+
 // Enums
 enum Form {
   ONE_HALF   @map("1/2")

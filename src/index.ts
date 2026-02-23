@@ -14,16 +14,16 @@ import { hiveCommand } from "./commands/detectives/application";
 
 // ==== Импорт обработчиков ====
 import { handleInteractions } from "./handlers/interactionHandler";
-import { startRecruitStatsUpdater } from "./services/recruitStatsUpdater";
-import {recruitStatsCommand} from "./commands/ravens-family/recruit-stats";
 import {staffListCommand} from "./commands/ravens-family/staff-list";
 import {syncMembers} from "./utils/syncMembers";
 import {config} from "./config/env";
+import {recruitStatsCommand} from "./commands/ravens-family/recruit-stats";
+import {startRecruitStatsUpdater} from "./services/recruitStatsUpdater";
 
 dotenv.config();
 
 // ==== Создание клиента ====
-const client = new Client({
+export const client = new Client({
 	intents: [
 		GatewayIntentBits.Guilds,
 		GatewayIntentBits.GuildMembers,
@@ -86,9 +86,7 @@ client.once("ready", async () => {
 			);
 		}
 	}
-
-	// Запуск автообновления статистики
-	startRecruitStatsUpdater(client);
+	await startRecruitStatsUpdater();
 });
 
 client.on("interactionCreate", async (interaction) => {
