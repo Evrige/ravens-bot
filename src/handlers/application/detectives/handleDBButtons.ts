@@ -114,11 +114,26 @@ export async function handleDBButtons(interaction: any){
 			interaction.customId.startsWith(CUSTOM_IDS.ACCEPT_HIVE) ||
 			interaction.customId.startsWith(CUSTOM_IDS.DECLINE_HIVE)
 		) {
+			const member = interaction.member as GuildMember;
+
+			const hasPermission = member.roles.cache.some(role =>
+				DB_STAFF_ROLE_IDS.includes(role.id)
+			);
+
+			if (!hasPermission) {
+				return interaction.reply({
+					content: "❌ У вас нет прав для подтверждения.",
+					ephemeral: true
+				});
+			}
+
 			const message = interaction.message;
 
 			// Определяем какую кнопку нажали
 			const isAccept = interaction.customId.startsWith(CUSTOM_IDS.ACCEPT_HIVE);
 			const reactionEmoji = isAccept ? "✅" : "❌";
+
+			await interaction.deferUpdate(); // чтобы не было "interaction failed"
 
 			// Удаляем все реакции
 			await message.reactions.removeAll();
@@ -135,6 +150,8 @@ export async function handleDBButtons(interaction: any){
 
 			// Добавляем финальную реакцию
 			await message.react(reactionEmoji);
+
+			return;
 		}
 		// Открыть форму
 		if (interaction.customId === CUSTOM_IDS.OPEN_APPLICATION) {

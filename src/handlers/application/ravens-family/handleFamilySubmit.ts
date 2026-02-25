@@ -16,6 +16,26 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 	if (interaction.customId === CUSTOM_IDS.FAMILY_MODAL_NEW) {
 		const embed = buildFamilyEmbedFromModal(interaction);
 
+		const ageRaw = interaction.fields.getTextInputValue(
+			CUSTOM_IDS.APPLICATION_FAMILY_AGE
+		).trim();
+
+		// Проверка: только цифры
+		if (!/^\d+$/.test(ageRaw)) {
+			return interaction.reply({
+				content: "❌ Возраст должен быть указан числом (например: 18).",
+				ephemeral: true
+			});
+		}
+		const age = Number(ageRaw);
+
+		// Дополнительная проверка диапазона (по желанию)
+		if (age < 14 || age > 100) {
+			return interaction.reply({
+				content: "❌ Укажите корректный возраст.",
+				ephemeral: true
+			});
+		}
 		// Получаем или создаём пользователя
 		const user = await getOrCreateUser(interaction.user.id);
 
