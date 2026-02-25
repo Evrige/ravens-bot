@@ -6,8 +6,8 @@ import { processFamilyApplication } from "./processFamilyApplication";
 import { config } from "../../../config/env";
 import { FAMILY_RECRUIT_ROLE_IDS } from "../../../config/staff";
 import { prisma, getOrCreateUser } from "../../../utils/prisma";
-import type { Application } from "@prisma/client";
 import type { ModalSubmitInteraction } from "discord.js";
+import {Application} from "../../../generated/prisma/client";
 
 export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 	let application: Application | null = null;
@@ -65,8 +65,28 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 		// Упоминания ролей
 		const mentionText = FAMILY_RECRUIT_ROLE_IDS.map(id => `<@&${id}>`).join(" ");
 
+		// Получаем историю заявок пользователя
+		const applicationHistory = await prisma.application.findMany({
+			where: { userId: user.id },
+			orderBy: { createdAt: 'desc' } // чтобы последние были сверху
+		});
+
+		let historyText = '';
+		if (applicationHistory.length > 0) {
+			historyText = applicationHistory.map((app: Application) => {
+				const statusEmoji = app.isAccepted ? '🟢' : '🔴';
+				const dateStr = app.createdAt.toLocaleDateString('ru-RU');
+				const reason = app.isAccepted ? '' : ` — Причина: ${app.reason || 'не указана'}`;
+				return `${statusEmoji} ${dateStr}${reason}`;
+			}).join('\n');
+		} else {
+			historyText = 'Старых заявок не найдено.';
+		}
+
+
+// Отправляем сначала текст истории, затем embed
 		await appChannel.send({
-			content: mentionText || undefined,
+			content: `${mentionText || ''}\n${historyText}`,
 			embeds: [embed],
 			components: [buttons]
 		});
@@ -81,7 +101,6 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 		// Разделяем applicationId и messageId
 		const data = interaction.customId.replace(CUSTOM_IDS.FAMILY_DECLINE_REASON_IN_FAMILY, "");
 		const [applicationId, messageId] = data.split("_");
-
 		if (!applicationId) {
 			return interaction.reply({ content: "Ошибка: ID заявки не найден ❌", ephemeral: true });
 		}
@@ -95,10 +114,10 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 			return interaction.reply({ content: "Ошибка: заявка не найдена ❌", ephemeral: true });
 		}
 
-		// Обновляем заявку в базе (можно добавить поле reason)
+		// Обновляем заявку в базе
 		await prisma.application.update({
 			where: { id: +applicationId },
-			data: { howToKnow: reason } // или поле reason
+			data: { reason }
 		});
 
 		// Вызываем обработку заявки (отклонение)

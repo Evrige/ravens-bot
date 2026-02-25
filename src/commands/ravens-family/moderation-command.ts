@@ -62,29 +62,30 @@ export const warnCommand = {
 			await updateWarnRoles(member, newWarns); // Обновляем роли варнов
 		}
 
-		await sendDM(interaction, targetUser.id, `Вам выдан варн (${newWarns}/3) от ${issuer.tag}. Причина: ${reason}`);
+		await sendDM(interaction, targetUser.id, `Вам выдан варн (${newWarns}/3) от <@${issuer.id}>. Причина: ${reason}`);
 
 		if (isBan && member) {
 			await member.ban({ reason: `3 предупреждения: ${reason}` });
-			await sendDM(interaction, targetUser.id, `Вы были забанены за 3 предупреждения от ${issuer.tag}.`);
+			await sendDM(interaction, targetUser.id, `Вы были забанены за 3 предупреждения от <@${issuer.id}>.`);
 
 			// Лог для 3 варнов
 			await sendLog({
 				guild: interaction.guild!,
-				message: `⛔ Пользователь ${targetUser.tag} получил 3/3 предупреждения и был забанен.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`
+				message: `⛔ Пользователь <@${targetUser.id}> получил 3/3 предупреждения и был забанен.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`
 			});
 
 			return interaction.reply({
-				content: `⛔ Пользователь ${targetUser.tag} получил 3/3 предупреждений и был забанен.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`,
+				content: `⛔ Пользователь <@${targetUser.id}> получил 3/3 предупреждений и был забанен.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`,
 				ephemeral: true
 			});
 		}
+
 		await sendLog({
 			guild: interaction.guild!,
-			message: `⚠️ Пользователь ${targetUser.tag} получил предупреждение (${newWarns}/3)\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`
+			message: `⚠️ Пользователь <@${targetUser.id}> получил предупреждение (${newWarns}/3)\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`
 		});
 		return interaction.reply({
-			content: `⚠️ Пользователь ${targetUser.tag} получил предупреждение (${newWarns}/3)\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`,
+			content: `⚠️ Пользователь <@${targetUser.id}> получил предупреждение (${newWarns}/3)\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`,
 			ephemeral: true
 		});
 	}
@@ -117,11 +118,11 @@ export const unwarnCommand = {
 		if (member) await updateWarnRoles(member, newWarns);
 		await sendLog({
 			guild: interaction.guild!,
-			message: `✅ С пользователя ${targetUser.tag} снято предупреждение.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}\n📊 Сейчас предупреждений: ${newWarns}/3`
+			message: `✅ С пользователя <@${targetUser.id}> снято предупреждение.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}\n📊 Сейчас предупреждений: ${newWarns}/3`
 		});
-		await sendDM(interaction, targetUser.id, `У вас снято предупреждение от ${issuer.tag}. Сейчас варнов: ${newWarns}. Причина: ${reason}`);
+		await sendDM(interaction, targetUser.id, `У вас снято предупреждение от <@${issuer.id}>. Сейчас варнов: ${newWarns}. Причина: ${reason}`);
 		interaction.reply({
-			content: `✅ С пользователя ${targetUser.tag} снято предупреждение.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}\n📊 Сейчас предупреждений: ${newWarns}/3`,
+			content: `✅ С пользователя <@${targetUser.id}> снято предупреждение.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}\n📊 Сейчас предупреждений: ${newWarns}/3`,
 			ephemeral: true
 		});
 	}
@@ -150,11 +151,11 @@ export const banCommand = {
 		if (member) await member.ban({ reason });
 		await sendLog({
 			guild: interaction.guild!,
-			message: `⛔ Пользователь ${targetUser.tag} забанен.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`
+			message: `⛔ Пользователь <@${targetUser.id}> забанен.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`
 		});
-		await sendDM(interaction, targetUser.id, `Вы были забанены от ${issuer.tag}. Причина: ${reason}`);
+		await sendDM(interaction, targetUser.id, `Вы были забанены от <@${issuer.id}>. Причина: ${reason}`);
 		interaction.reply({
-			content: `⛔ Пользователь ${targetUser.tag} забанен.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`,
+			content: `⛔ Пользователь <@${targetUser.id}> забанен.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`,
 			ephemeral: true
 		});
 	}
@@ -177,15 +178,15 @@ export const unbanCommand = {
 
 		if (!targetUser) return interaction.reply({ content: "Пользователь не выбран", ephemeral: true });
 
-		await prisma.user.update({ where: { id: targetUser.id }, data: { isBan: false } });
+		await prisma.user.update({ where: { id: targetUser.id }, data: { isBan: false, warn: 0 } });
 		await interaction.guild?.members.unban(targetUser.id).catch(() => null);
 		await sendLog({
 			guild: interaction.guild!,
-			message: `✅ Пользователь ${targetUser.tag} разбанен.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`
+			message: `✅ Пользователь <@${targetUser.id}> разбанен.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`
 		});
-		await sendDM(interaction, targetUser.id, `Вы были разбанены от ${issuer.tag}. Причина: ${reason}`);
+		await sendDM(interaction, targetUser.id, `Вы были разбанены от <@${issuer.id}>. Причина: ${reason}`);
 		interaction.reply({
-			content: `✅ Пользователь ${targetUser.tag} разбанен.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`,
+			content: `✅ Пользователь <@${targetUser.id}> разбанен.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`,
 			ephemeral: true
 		});
 	}
@@ -224,14 +225,14 @@ export const muteCommand = {
 		await sendDM(
 			interaction,
 			member.id,
-			`Вы получили тайм-аут от ${issuer.tag} на ${duration} минут.\nПричина: ${reason}`
+			`Вы получили тайм-аут от <@${issuer.id}> на ${duration} минут.\nПричина: ${reason}`
 		);
 		await sendLog({
 			guild: interaction.guild!,
-			message: `🔇 Пользователь ${member.user.tag} получил тайм-аут.\n⏱ Время: ${duration !== null ? duration.toString() : "не указано"} минут\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`
+			message: `🔇 Пользователь <@${member.user.id}> получил тайм-аут.\n⏱ Время: ${duration !== null ? duration.toString() : "не указано"} минут\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`
 		});
 		await interaction.reply({
-			content: `🔇 Пользователь ${member.user.tag} получил тайм-аут.\n⏱ Время: ${duration} минут\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`,
+			content: `🔇 Пользователь <@${member.user.id}> получил тайм-аут.\n⏱ Время: ${duration} минут\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`,
 			ephemeral: true
 		});
 	}
@@ -269,14 +270,14 @@ export const unmuteCommand = {
 		await sendDM(
 			interaction,
 			member.id,
-			`Ваш тайм-аут снят ${issuer.tag}.\nПричина: ${reason}`
+			`Ваш тайм-аут снят <@${issuer.id}>.\nПричина: ${reason}`
 		);
 		await sendLog({
 			guild: interaction.guild!,
-			message: `🔊 Тайм-аут с пользователя ${member.user.tag} снят.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`
+			message: `🔊 Тайм-аут с пользователя <@${member.user.id}> снят.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`
 		});
 		await interaction.reply({
-			content: `🔊 Тайм-аут с пользователя ${member.user.tag} снят.\n👮 Модератор: ${issuer.tag}\n📄 Причина: ${reason}`,
+			content: `🔊 Тайм-аут с пользователя <@${member.user.id}> снят.\n👮 Модератор: <@${issuer.id}>\n📄 Причина: ${reason}`,
 			ephemeral: true
 		});
 	}
