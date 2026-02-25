@@ -6,34 +6,36 @@ import {
 	GuildMember,
 	ModalBuilder,
 	TextInputBuilder,
-	TextInputStyle
+	TextInputStyle,
+	Interaction
 } from "discord.js";
 import { createButton } from "../../../components/createButton";
 import { CUSTOM_IDS } from "../../../constants/customIds";
 import { openFamilyApplicationModal } from "./openFamilyApplicationModal";
 import { processFamilyApplication } from "./processFamilyApplication";
 import { config } from "../../../config/env";
-import {FAMILY_HIGH_ROLE_IDS, FAMILY_RECRUIT_ROLE_IDS} from "../../../config/staff";
+import { FAMILY_HIGH_ROLE_IDS, FAMILY_RECRUIT_ROLE_IDS } from "../../../config/staff";
 import { createPrivateChannel } from "../../../utils/createPrivateChannel";
-import {prisma} from "../../../utils/prisma";
+import { prisma } from "../../../utils/prisma";
+
+// --- Временная память для контроля кто нажал на обзвон
+const callMap = new Map<string, string>(); // Map<applicationId, clickedUserId>
 
 // --- Создание кнопок
 export function buildFamilyButtons(applicationId: bigint, showCallButton = true) {
-	const row = new ActionRowBuilder<ButtonBuilder>()
-		.addComponents(
-			createButton({
-				customId: `${CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY}${applicationId}`,
-				label: "Принять",
-				style: ButtonStyle.Success
-			}),
-			createButton({
-				customId: `${CUSTOM_IDS.FAMILY_DECLINE_APPLICATION_IN_FAMILY}${applicationId}`,
-				label: "Отклонить",
-				style: ButtonStyle.Danger
-			})
-		);
+	const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+		createButton({
+			customId: `${CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY}${applicationId}`,
+			label: "Принять",
+			style: ButtonStyle.Success
+		}),
+		createButton({
+			customId: `${CUSTOM_IDS.FAMILY_DECLINE_APPLICATION_IN_FAMILY}${applicationId}`,
+			label: "Отклонить",
+			style: ButtonStyle.Danger
+		})
+	);
 
-	// Добавляем кнопку "Вызвать на обзвон" только если showCallButton = true
 	if (showCallButton) {
 		row.addComponents(
 			createButton({
@@ -56,20 +58,28 @@ async function deleteUserTicketChannels(guild: any, username: string) {
 	if (voiceChannel) await voiceChannel.delete("Заявка принята/отклонена").catch(() => {});
 }
 
-// --- Проверка прав для принятия/отклонения
-function canModerate(interaction: any, clickedUserId: string) {
+// --- Проверка прав
+function canModerate(interaction: Interaction, clickedUserId: string) {
 	const member = interaction.member as GuildMember;
+
 	const hasRole = [
 		...FAMILY_RECRUIT_ROLE_IDS.slice(1),
-		...FAMILY_HIGH_ROLE_IDS
-	].some(id => member.roles.cache.has(id));
+		...FAMILY_HIGH_ROLE_IDS].some(id =>
+		member.roles.cache.has(id)
+	);
 
-	return hasRole || interaction.user.id === clickedUserId;
+	// Если есть роли — можно
+	if (hasRole) return true;
+
+	// Если пользователь нажал на обзвон — можно
+	if (interaction.user.id === clickedUserId) return true;
+
+	return false;
 }
 
 // --- Обработчик кнопок
 export async function handleFamilyButtons(interaction: any) {
-	// Открыть форму
+	// --- Открыть форму заявки
 	if (interaction.customId === CUSTOM_IDS.OPEN_FAMILY_APPLICATION) {
 		return openFamilyApplicationModal(interaction);
 	}
@@ -83,23 +93,19 @@ export async function handleFamilyButtons(interaction: any) {
 			.replace(CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY, "")
 			.replace(CUSTOM_IDS.FAMILY_DECLINE_APPLICATION_IN_FAMILY, "");
 
+		// --- Определяем кто может модерать (для обзвона)
+		const clickedUserId = callMap.get(applicationId) || ""; // если обзвон был — там будет ID
+
+		if (!canModerate(interaction, clickedUserId)) {
+			return interaction.reply({ content: "У вас нет прав на это действие ❌", ephemeral: true });
+		}
+
 		const message = interaction.message;
 		const embed = message.embeds[0];
 		if (!embed) return;
 
-		const clickedUserId = interaction.user.id;
-		// Проверяем права
-		if (!canModerate(interaction, clickedUserId)) {
-			return interaction.reply({ content: "У вас нет прав на это действие ❌", ephemeral: true });
-		}
-		const application = await prisma.application.findUnique({
-			where: { id: applicationId }
-		});
-
-		if (!application) {
-			console.log("Заявка не найдена");
-			return;
-		}
+		const application = await prisma.application.findUnique({ where: { id: applicationId } });
+		if (!application) return interaction.reply({ content: "Заявка не найдена ❌", ephemeral: true });
 
 		const userId = application.userId;
 		const member = await interaction.guild.members.fetch(userId);
@@ -109,26 +115,23 @@ export async function handleFamilyButtons(interaction: any) {
 		await deleteUserTicketChannels(interaction.guild, username);
 
 		if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY)) {
-			// обработка принятия заявки
+			// --- Принять заявку
 			let nicknameFromApplication: string | undefined;
 			const nameField = embed.fields.find((f: any) => f.name === CUSTOM_IDS.APPLICATION_FAMILY_NAME);
 			if (nameField) nicknameFromApplication = nameField.value;
-			await interaction.deferUpdate(); // ОБЯЗАТЕЛЬНО
 
-			await processFamilyApplication(
-				interaction,
-				applicationId,
-				true,
-				undefined,
-				nicknameFromApplication
-			);
+			await interaction.deferUpdate();
 
+			await processFamilyApplication(interaction, applicationId, true, undefined, nicknameFromApplication);
+
+			// удаляем кнопку и запись о обзвоне
+			callMap.delete(applicationId);
 			await interaction.message.delete().catch(() => {});
 			return;
 		} else {
-			// отклонение — открываем модальное окно
+			// --- Отклонить заявку — открываем модал
 			const modal = new ModalBuilder()
-				.setCustomId(`${CUSTOM_IDS.FAMILY_DECLINE_REASON_IN_FAMILY}${applicationId}`)
+				.setCustomId(`${CUSTOM_IDS.FAMILY_DECLINE_REASON_IN_FAMILY}${applicationId}_${interaction.message.id}`)
 				.setTitle("Причина отклонения");
 
 			const reasonInput = new TextInputBuilder()
@@ -137,7 +140,7 @@ export async function handleFamilyButtons(interaction: any) {
 				.setStyle(TextInputStyle.Paragraph);
 
 			modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput));
-		  modal.setCustomId(`${CUSTOM_IDS.FAMILY_DECLINE_REASON_IN_FAMILY}${applicationId}_${interaction.message.id}`)
+
 			return interaction.showModal(modal);
 		}
 	}
@@ -147,43 +150,44 @@ export async function handleFamilyButtons(interaction: any) {
 		const applicationId = interaction.customId.replace(CUSTOM_IDS.FAMILY_CALL_APPLICATION_IN_FAMILY, "");
 
 		const application = await prisma.application.findUnique({
-			where: { id: applicationId },  // твой уникальный ID заявки
-			select: { userId: true }       // выбираем только userId
+			where: { id: applicationId },
+			select: { userId: true }
 		});
 
-		const userId = application?.userId || ""
+		if (!application) return;
+
+		const userId = application.userId;
 		const member = await interaction.guild.members.fetch(userId);
 		const username = member.user.username;
 
 		const categoryId = config.FAMILY_RECRUIT_CATEGORY_ID!;
 
-		// создаём приватные каналы
-		const textChannel = await createPrivateChannel({
+		// --- Создаём приватные каналы
+		await createPrivateChannel({
 			guild: interaction.guild,
 			name: `чат-${username}`,
-			type: 0,
-			categoryId: categoryId,
+			type: ChannelType.GuildText,
+			categoryId,
 			userId,
-			clickedUserId: interaction.user.id, // сохраняем кто нажал на кнопку
-			roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1),
+			clickedUserId: interaction.user.id, // сохраняем кто нажал на обзвон
+			roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1)
 		});
-
-		if (textChannel && textChannel.isTextBased()) {
-			await textChannel.send(`Привет <@${userId}>! Здесь будет ваш приватный чат для обзвона.`);
-		}
 
 		await createPrivateChannel({
 			guild: interaction.guild,
 			name: `обзвон-${username}`,
 			type: ChannelType.GuildVoice,
-			categoryId: categoryId,
+			categoryId,
 			userId,
 			clickedUserId: interaction.user.id,
 			roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1)
 		});
 
-		// --- удаляем кнопку "Вызвать на обзвон" после нажатия
-		const newComponents = buildFamilyButtons(applicationId, false); // showCallButton = false
+		// --- Сохраняем кто нажал на обзвон
+		callMap.set(applicationId, interaction.user.id);
+
+		// --- Убираем кнопку "Вызвать на обзвон"
+		const newComponents = buildFamilyButtons(applicationId, false);
 		await interaction.update({ components: [newComponents] });
 	}
 }
