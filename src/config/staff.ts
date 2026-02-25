@@ -9,3 +9,6 @@ export const FAMILY_HIGH_ROLE_IDS =
 
 export const FAMILY_USER_ROLE_IDS =
 	process.env.FAMILY_USER_ROLE_IDS?.split(",").map(id => id.trim()) || [];
+
+export const FAMILY_OWNERS_ROLE_IDS =
+	process.env.FAMILY_OWNERS_ROLE_IDS?.split(",").map(id => id.trim()) || [];

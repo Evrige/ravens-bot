@@ -1,9 +1,9 @@
 import {
 	Client,
-	GatewayIntentBits,
+	GatewayIntentBits, NewsChannel,
 	Partials,
 	REST,
-	Routes
+	Routes, TextBasedChannel, TextChannel, ThreadChannel
 } from "discord.js";
 import * as dotenv from "dotenv";
 import "dotenv/config";
@@ -19,6 +19,14 @@ import {syncMembers} from "./utils/syncMembers";
 import {config} from "./config/env";
 import {recruitStatsCommand} from "./commands/ravens-family/recruit-stats";
 import {startRecruitStatsUpdater} from "./services/recruitStatsUpdater";
+import {startStaffListUpdater} from "./services/startStaffListUpdater";
+import {
+	banCommand,
+	muteCommand,
+	unbanCommand, unmuteCommand,
+	unwarnCommand,
+	warnCommand
+} from "./commands/ravens-family/moderation-command";
 
 dotenv.config();
 
@@ -27,6 +35,7 @@ export const client = new Client({
 	intents: [
 		GatewayIntentBits.Guilds,
 		GatewayIntentBits.GuildMembers,
+		GatewayIntentBits.GuildPresences,
 	],
 	partials: [Partials.Channel]
 });
@@ -38,7 +47,13 @@ export const client = new Client({
 const familyCommands = [
 	familyCommand.data.toJSON(),
 	recruitStatsCommand.data.toJSON(),
-	staffListCommand.data.toJSON()
+	staffListCommand.data.toJSON(),
+	warnCommand.data.toJSON(),
+	unwarnCommand.data.toJSON(),
+	banCommand.data.toJSON(),
+	unbanCommand.data.toJSON(),
+	muteCommand.data.toJSON(),
+	unmuteCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -87,7 +102,10 @@ client.once("ready", async () => {
 		}
 	}
 	await startRecruitStatsUpdater();
+	await startStaffListUpdater();
 });
+
+
 
 client.on("interactionCreate", async (interaction) => {
 	await handleInteractions(interaction);

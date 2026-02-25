@@ -14,6 +14,7 @@ model User {
   warn           Int          @default(0)
   isBan          Boolean      @default(false)
   isMarry        Boolean      @default(false)
+  isMute Boolean @default(false)
   level          Int          @default(0)
   messageCount   BigInt       @default(0)
 

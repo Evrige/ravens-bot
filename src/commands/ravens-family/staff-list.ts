@@ -1,5 +1,10 @@
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { FAMILY_HIGH_ROLE_IDS, FAMILY_RECRUIT_ROLE_IDS, FAMILY_USER_ROLE_IDS } from "../../config/staff";
+import { prisma } from "../../utils/prisma";
+import {
+	FAMILY_HIGH_ROLE_IDS,
+	FAMILY_RECRUIT_ROLE_IDS,
+	FAMILY_USER_ROLE_IDS
+} from "../../config/staff";
 import { CUSTOM_COMMAND } from "../../constants/customIds";
 
 export const staffListCommand = {
@@ -13,12 +18,9 @@ export const staffListCommand = {
 				return interaction.reply({ content: "Гильдия не найдена ❌", ephemeral: true });
 			}
 
-			await interaction.deferReply(); // 🔥 ВАЖНО
+			await interaction.deferReply();
 
 			const guild = interaction.guild;
-
-			// Загружаем участников (может занимать время)
-			await guild.members.fetch();
 
 			const allRoles = [
 				...FAMILY_HIGH_ROLE_IDS,
@@ -26,57 +28,51 @@ export const staffListCommand = {
 				...FAMILY_USER_ROLE_IDS
 			];
 
-			const generateDescription = async () => {
-				const mentionedUsers = new Set<string>();
-				let description = "";
+			const mentionedUsers = new Set<string>();
+			let description = "";
 
-				for (const roleId of allRoles) {
-					const role = await guild.roles.fetch(roleId).catch(() => null);
-					if (!role) continue;
+			for (const roleId of allRoles) {
+				const role = await guild.roles.fetch(roleId).catch(() => null);
+				if (!role) continue;
 
-					const members = role.members.filter(m => !mentionedUsers.has(m.id));
+				const members = role.members.filter(m => !mentionedUsers.has(m.id));
 
-					if (members.size > 0) {
-						description += `**${role}**\n`;
+				if (members.size > 0) {
+					description += `**${role}**\n`;
 
-						members.forEach(m => {
-							description += `<@${m.id}>\n`;
-							mentionedUsers.add(m.id);
-						});
+					members.forEach(m => {
+						description += `<@${m.id}>\n`;
+						mentionedUsers.add(m.id);
+					});
 
-						description += "\n";
-					}
+					description += "\n";
 				}
-
-				return description || "Нет участников с STAFF ролями";
-			};
+			}
 
 			const embed = new EmbedBuilder()
 				.setTitle("Семья")
 				.setColor("Purple")
-				.setDescription(await generateDescription())
-				.setFooter({ text: "Обновляется каждые 30 секунд • by Evri" })
+				.setDescription(description || "Нет участников с STAFF ролями")
+				.setFooter({ text: "Обновляется каждые 4 часа • by Evri" })
 				.setTimestamp();
 
 			const msg = await interaction.editReply({ embeds: [embed] });
 
-			// Автообновление
-			setInterval(async () => {
-				const updatedEmbed = new EmbedBuilder()
-					.setTitle("Семья")
-					.setColor("Purple")
-					.setDescription(await generateDescription())
-					.setFooter({ text: "Обновляется каждые 30 секунд • by Evri" })
-					.setTimestamp();
-
-				await msg.edit({ embeds: [updatedEmbed] }).catch(() => {});
-			}, 30 * 1000);
+			// ✅ Сохраняем messageId в БД
+			await prisma.botMessage.upsert({
+				where: { type: "staff_list" },
+				update: { messageId: msg.id, channelId: msg.channelId },
+				create: { type: "staff_list", messageId: msg.id, channelId: msg.channelId }
+			});
 
 		} catch (err) {
-			console.error("Ошибка staff-stats:", err);
+			console.error("Ошибка staff-list:", err);
 
 			if (!interaction.replied && !interaction.deferred) {
-				await interaction.reply({ content: "Ошибка при получении статистики ❌", ephemeral: true });
+				await interaction.reply({
+					content: "Ошибка при получении статистики ❌",
+					ephemeral: true
+				});
 			}
 		}
 	},

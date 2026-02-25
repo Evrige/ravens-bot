@@ -11,6 +11,13 @@ import {handleFamilyButtons} from "./application/ravens-family/handleFamilyButto
 import {handleFamilySubmit} from "./application/ravens-family/handleFamilySubmit";
 import {recruitStatsCommand} from "../commands/ravens-family/recruit-stats";
 import {staffListCommand} from "../commands/ravens-family/staff-list";
+import {
+	banCommand,
+	muteCommand,
+	unbanCommand,
+	unmuteCommand, unwarnCommand,
+	warnCommand
+} from "../commands/ravens-family/moderation-command";
 
 export async function handleInteractions(interaction: Interaction) {
 
@@ -25,17 +32,56 @@ export async function handleInteractions(interaction: Interaction) {
 			return familyCommand.execute(interaction);
 		}
 	}
-
 	if (interaction.isChatInputCommand()) {
-		if (interaction.commandName === CUSTOM_COMMAND.RECRUIT_STATS) {
-			return recruitStatsCommand.execute(interaction);
+		if (interaction.commandName === CUSTOM_COMMAND.MUTE) {
+			return muteCommand.execute(interaction);
 		}
 	}
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.UNMUTE) {
+			return unmuteCommand.execute(interaction);
+		}
+	}
+
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.UNMUTE) {
+			return unmuteCommand.execute(interaction);
+		}
+	}
+
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.BAN) {
+			return banCommand.execute(interaction);
+		}
+	}
+
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.UNBAN) {
+			return unbanCommand.execute(interaction);
+		}
+	}
+
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.WARN) {
+			return warnCommand.execute(interaction);
+		}
+	}
+
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.UNWARN) {
+			return unwarnCommand.execute(interaction);
+		}
+	}
+
+
+
 	if (interaction.isChatInputCommand()) {
 		if (interaction.commandName === CUSTOM_COMMAND.STAFF_LIST) {
 			return staffListCommand.execute(interaction);
 		}
 	}
+
+
 
 	if (interaction.isButton()) {
 		await handleDBButtons(interaction)

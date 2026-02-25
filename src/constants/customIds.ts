@@ -38,4 +38,11 @@ export const CUSTOM_COMMAND = {
 	FAMILY_APPLICATION: "заявк_в_семью",
 	RECRUIT_STATS: "recruit-stats",
 	STAFF_LIST: "staff-list",
+	REGISTER_STREAMER: "register-streamer",
+	MUTE: "mute",
+	BAN: "ban",
+	WARN: "warn",
+	UNWARN: "unwarn",
+	UNBAN: "unban",
+	UNMUTE: "unmute",
 }
