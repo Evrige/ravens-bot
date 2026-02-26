@@ -9,7 +9,7 @@ datasource db {
 
 model User {
   id           String        @id
-  balance      BigInt        @default(0)
+  balance Decimal @default(0)
   timeInVoice  BigInt        @default(0)
   warn         Int           @default(0)
   isBan        Boolean       @default(false)

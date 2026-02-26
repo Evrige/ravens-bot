@@ -27,6 +27,9 @@ import {
 	unwarnCommand,
 	warnCommand
 } from "./commands/ravens-family/moderation-command";
+import {initVoiceTracker} from "./services/voiceChecker";
+import {balanceCommand} from "./commands/ravens-family/balance";
+import {voiceTopCommand} from "./commands/ravens-family/voiceTop";
 
 dotenv.config();
 
@@ -36,6 +39,7 @@ export const client = new Client({
 		GatewayIntentBits.Guilds,
 		GatewayIntentBits.GuildMembers,
 		GatewayIntentBits.GuildPresences,
+		GatewayIntentBits.GuildVoiceStates,
 	],
 	partials: [Partials.Channel]
 });
@@ -54,6 +58,8 @@ const familyCommands = [
 	unbanCommand.data.toJSON(),
 	muteCommand.data.toJSON(),
 	unmuteCommand.data.toJSON(),
+	balanceCommand.data.toJSON(),
+	voiceTopCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -101,6 +107,7 @@ client.once("ready", async () => {
 			);
 		}
 	}
+	initVoiceTracker(client);
 	await startRecruitStatsUpdater();
 	await startStaffListUpdater();
 });

@@ -18,6 +18,8 @@ import {
 	unmuteCommand, unwarnCommand,
 	warnCommand
 } from "../commands/ravens-family/moderation-command";
+import {balanceCommand} from "../commands/ravens-family/balance";
+import {voiceTopCommand} from "../commands/ravens-family/voiceTop";
 
 export async function handleInteractions(interaction: Interaction) {
 
@@ -35,11 +37,6 @@ export async function handleInteractions(interaction: Interaction) {
 	if (interaction.isChatInputCommand()) {
 		if (interaction.commandName === CUSTOM_COMMAND.MUTE) {
 			return muteCommand.execute(interaction);
-		}
-	}
-	if (interaction.isChatInputCommand()) {
-		if (interaction.commandName === CUSTOM_COMMAND.UNMUTE) {
-			return unmuteCommand.execute(interaction);
 		}
 	}
 
@@ -73,7 +70,17 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 	}
 
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.BALANCE) {
+			return balanceCommand.execute(interaction);
+		}
+	}
 
+	if (interaction.isChatInputCommand()) {
+		if (interaction.commandName === CUSTOM_COMMAND.VOICETOP) {
+			return voiceTopCommand.execute(interaction);
+		}
+	}
 
 	if (interaction.isChatInputCommand()) {
 		if (interaction.commandName === CUSTOM_COMMAND.STAFF_LIST) {

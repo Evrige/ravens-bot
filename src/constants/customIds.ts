@@ -39,6 +39,8 @@ export const CUSTOM_COMMAND = {
 	RECRUIT_STATS: "recruit-stats",
 	STAFF_LIST: "staff-list",
 	REGISTER_STREAMER: "register-streamer",
+	BALANCE: "balance",
+	VOICETOP: "voice-top",
 	MUTE: "mute",
 	BAN: "ban",
 	WARN: "warn",
