@@ -1,6 +1,8 @@
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import { CUSTOM_COMMAND } from "../../constants/customIds";
+import {FAMILY_OWNERS_ROLE_IDS} from "../../config/staff";
+import {checkRolesOrReply} from "../../utils/checkRoles";
 
 export const recruitStatsCommand = {
 	data: new SlashCommandBuilder()
@@ -10,6 +12,9 @@ export const recruitStatsCommand = {
 	async execute(interaction: ChatInputCommandInteraction) {
 		try {
 			await interaction.deferReply();
+
+			// Проверка ролей
+			if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
 
 			const generateEmbed = async () => {
 				const applications = await prisma.application.findMany({

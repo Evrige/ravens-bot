@@ -7,7 +7,6 @@ import {
 } from "discord.js";
 import * as dotenv from "dotenv";
 import "dotenv/config";
-
 // ==== Импорт команд ====
 import { familyCommand } from "./commands/ravens-family/application";
 import { hiveCommand } from "./commands/detectives/application";
@@ -28,9 +27,14 @@ import {
 	warnCommand
 } from "./commands/ravens-family/moderation-command";
 import {initVoiceTracker} from "./services/voiceChecker";
-import {balanceCommand} from "./commands/ravens-family/balance";
 import {voiceTopCommand} from "./commands/ravens-family/voiceTop";
-
+import {streamerAddCommand} from "./commands/ravens-family/streamer-add";
+import { startWebServer } from "./web/server";
+import {startTwitchChecker} from "./services/twitchChecker";
+import {streamerRemoveCommand} from "./commands/ravens-family/streamer-remove";
+import {balanceCheckCommand, balanceCommand, giveCommand, takeCommand} from "./commands/ravens-family/balanceKeeper";
+import {startMarketUpdater} from "./services/startMarketUpdater";
+import {marketAddCommand, marketCommand} from "./commands/ravens-family/market";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -60,6 +64,13 @@ const familyCommands = [
 	unmuteCommand.data.toJSON(),
 	balanceCommand.data.toJSON(),
 	voiceTopCommand.data.toJSON(),
+	streamerAddCommand.data.toJSON(),
+	streamerRemoveCommand.data.toJSON(),
+	balanceCheckCommand.data.toJSON(),
+	giveCommand.data.toJSON(),
+	takeCommand.data.toJSON(),
+	marketCommand.data.toJSON(),
+	marketAddCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -88,7 +99,7 @@ const serversCommands = [
 
 client.once("ready", async () => {
 	console.log(`Бот запущен как ${client.user?.tag}`);
-
+	startWebServer();
 	const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
 
 	// Регистрация команд по серверам
@@ -107,6 +118,8 @@ client.once("ready", async () => {
 			);
 		}
 	}
+	startMarketUpdater(client);
+	startTwitchChecker(client);
 	initVoiceTracker(client);
 	await startRecruitStatsUpdater();
 	await startStaffListUpdater();

@@ -27,9 +27,9 @@ export const voiceTopCommand = {
 
 			const medals = ["🥇", "🥈", "🥉"];
 
-			const description = topUsers.map((u, i) => {
+			const description = topUsers.map((user, i) => {
 				const medal = medals[i] || `${i + 1}.`;
-				return `${medal} <@${u.id}> — ${formatTime(u.timeInVoice)}`;
+				return `${medal} <@${user.id}> — ${formatTime(user.timeInVoice)}`;
 			}).join("\n");
 
 			const embed = new EmbedBuilder()

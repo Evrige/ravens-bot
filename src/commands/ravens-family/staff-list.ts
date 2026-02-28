@@ -1,11 +1,12 @@
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import {
-	FAMILY_HIGH_ROLE_IDS,
+	FAMILY_HIGH_ROLE_IDS, FAMILY_OWNERS_ROLE_IDS,
 	FAMILY_RECRUIT_ROLE_IDS,
 	FAMILY_USER_ROLE_IDS
 } from "../../config/staff";
 import { CUSTOM_COMMAND } from "../../constants/customIds";
+import {checkRolesOrReply} from "../../utils/checkRoles";
 
 export const staffListCommand = {
 	data: new SlashCommandBuilder()
@@ -21,6 +22,9 @@ export const staffListCommand = {
 			await interaction.deferReply();
 
 			const guild = interaction.guild;
+
+			// Проверка ролей
+			if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
 
 			const allRoles = [
 				...FAMILY_HIGH_ROLE_IDS,

@@ -31,6 +31,7 @@ export const CUSTOM_IDS = {
 	FAMILY_CALL_APPLICATION_IN_FAMILY: "FAMILY_CALL_APPLICATION_IN_FAMILY_",
 	FAMILY_DECLINE_REASON_IN_FAMILY: "FAMILY_DECLINE_REASON_IN_FAMILY_",
 	FAMILY_REASON_IN_FAMILY: "FAMILY_REASON_IN_FAMILY_",
+	MARKET_BUTTON: "market_buy_",
 };
 
 export const CUSTOM_COMMAND = {
@@ -38,13 +39,20 @@ export const CUSTOM_COMMAND = {
 	FAMILY_APPLICATION: "заявк_в_семью",
 	RECRUIT_STATS: "recruit-stats",
 	STAFF_LIST: "staff-list",
-	REGISTER_STREAMER: "register-streamer",
 	BALANCE: "balance",
 	VOICETOP: "voice-top",
+	STREAMER_ADD: "streamer-add",
+	STREAMER_REMOVE: "streamer-remove",
+	BALANCE_GIVE: "balance-give",
+	BALANCE_TAKE: "balance-take",
+	BALANCE_CHECK: "balance-check",
+	MARKET: "market",
+	MARKET_ADD: "market-add",
 	MUTE: "mute",
 	BAN: "ban",
 	WARN: "warn",
 	UNWARN: "unwarn",
 	UNBAN: "unban",
 	UNMUTE: "unmute",
+
 }

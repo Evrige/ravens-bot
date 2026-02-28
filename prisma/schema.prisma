@@ -25,10 +25,24 @@ model User {
 }
 
 model Market {
-  id      BigInt    @id @default(autoincrement())
+  id      BigInt   @id @default(autoincrement())
   name    String
-  price   BigInt
+  price   Decimal
   selling Selling[]
+
+  roleId  String?
+  role    Role?    @relation(fields: [roleId], references: [id])
+}
+
+model Role {
+  id     String   @id
+  userId String
+  price  Decimal   @default(0)
+  name   String
+  color  String
+  user   User     @relation(fields: [userId], references: [id])
+
+  markets Market[]
 }
 
 model Selling {
@@ -77,12 +91,17 @@ model Application {
   user       User     @relation("UserApplications", fields: [userId], references: [id])
 }
 
-model Role {
-  id     String @id
-  userId String
-  price  BigInt @default(0)
-  user   User   @relation(fields: [userId], references: [id])
+model Streamer {
+  id            Int      @id @default(autoincrement())
+  guildId       String
+  discordUserId String
+  twitchLogin   String
+  twitchUrl     String
+  isLive        Boolean  @default(false)
+  createdAt     DateTime @default(now())
 }
+
+
 
 model BotMessage {
   type      String @id
