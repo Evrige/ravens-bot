@@ -22,6 +22,8 @@ import {handleMarketButtons} from "./market/handleMarketButtons";
 import {marketAddCommand, marketCommand} from "../commands/ravens-family/market";
 import {handleMarketModalSubmit} from "./market/handleMarketModalSubmit";
 import {profileCommand} from "../commands/ravens-family/profile";
+import {handleStaffListToggle} from "../services/updateStaffList";
+import {client} from "../index";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -60,6 +62,10 @@ export async function handleInteractions(interaction: Interaction) {
 		await handleDBButtons(interaction);
 		await handleFamilyButtons(interaction);
 		await handleMarketButtons(interaction);
+		if(interaction.customId.startsWith("staff_toggle:")){
+			const handled = await handleStaffListToggle(client, interaction);
+			if (handled) return;
+		}
 	}
 
 	if (interaction.isModalSubmit()) {

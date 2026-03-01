@@ -1,30 +1,28 @@
-// src/commands/family/market.ts
-import {
-	ChatInputCommandInteraction,
-	SlashCommandBuilder,
-	PermissionFlagsBits
-} from "discord.js";
-
-import { prisma } from "../../utils/prisma";
+import {ChatInputCommandInteraction, PermissionFlagsBits, SlashCommandBuilder} from "discord.js";
 import { checkRolesOrReply } from "../../utils/checkRoles";
 import { FAMILY_OWNERS_ROLE_IDS } from "../../config/staff";
 import { CUSTOM_COMMAND } from "../../constants/customIds";
-import {updateMarket} from "../../services/updateMarket";
+import { updateMarket } from "../../services/updateMarket";
+import {prisma} from "../../utils/prisma";
 
 export const marketCommand = {
 	data: new SlashCommandBuilder()
 		.setName(CUSTOM_COMMAND.MARKET)
-		.setDescription("Обновить сообщение магазина в канале"),
+		.setDescription("Пересоздать сообщение магазина в канале"),
 
 	async execute(interaction: ChatInputCommandInteraction) {
+		// ✅ сразу ACK
+		await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+		// ✅ потом роли
 		if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
 
-		await interaction.deferReply({ ephemeral: true });
+		// ✅ принудительный репост
+		await updateMarket(interaction.client, true);
 
-		// ✅ обновляем ПУБЛИЧНОЕ сообщение магазина (апдейтер сам edit/send и пишет id в БД)
-		await updateMarket(interaction.client);
-
-		return interaction.editReply("✅ Магазин обновлён.");
+		return interaction.editReply("✅ Магазин пересоздан.");
+		// если хочешь без ответа:
+		// await interaction.deleteReply().catch(() => {});
 	}
 };
 

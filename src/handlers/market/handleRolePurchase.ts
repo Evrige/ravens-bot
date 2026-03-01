@@ -1,7 +1,7 @@
 import {
 	ModalSubmitInteraction,
 	GuildMember,
-	PermissionsBitField, Guild
+	PermissionsBitField
 } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import { CUSTOM_IDS } from "../../constants/customIds";
@@ -32,26 +32,19 @@ export async function handleRolePurchase(interaction: ModalSubmitInteraction) {
 
 	const user = await prisma.user.findUnique({ where: { id: userId } });
 	if (!user || user.balance < item.price) {
-		return interaction.reply({
-			content: "❌ Недостаточно монет.",
-			ephemeral: true
-		});
+		return interaction.reply({ content: "❌ Недостаточно монет.", ephemeral: true });
 	}
 
 	const roleName = interaction.fields.getTextInputValue("role_name").trim();
 	const roleColorRaw = interaction.fields.getTextInputValue("role_color").trim();
 
-	const hex = roleColorRaw.startsWith("#")
-		? roleColorRaw.slice(1)
-		: roleColorRaw;
-
+	const hex = roleColorRaw.startsWith("#") ? roleColorRaw.slice(1) : roleColorRaw;
 	if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
 		return interaction.reply({
 			content: "❌ Цвет должен быть в формате **#RRGGBB** (например: #ff00aa).",
 			ephemeral: true
 		});
 	}
-
 	const color = parseInt(hex, 16);
 
 	const member = (await interaction.guild.members
@@ -75,24 +68,16 @@ export async function handleRolePurchase(interaction: ModalSubmitInteraction) {
 	});
 
 	try {
-		// ✅ Позиция: чуть выше ролей пользователя, но ниже роли бота
-		const botTopPos = interaction.guild.members.me!.roles.highest.position;
+		/**
+		 * Самый низкий приоритет:
+		 * 0 — это @everyone, поэтому минимум = 1 (сразу над @everyone).
+		 */
+		const LOWEST_POS = 1;
 
-		// Самая высокая роль пользователя (включая @everyone она не будет, это ок)
-		const memberTopPos = member.roles.highest.position;
-
-		// Хотим поставить роль на 1 выше пользователя, чтобы она стала "верхней" и дала цвет
-		// Но не можем поднять выше роли бота
-		let targetPos = memberTopPos + 1;
-		targetPos = Math.max(1, targetPos);
-		targetPos = Math.min(botTopPos - 1, targetPos);
-
-		// Если botTopPos - 1 < 1, значит роль бота слишком низко (почти @everyone)
-		if (targetPos < 1) targetPos = 1;
-
-		if (role.position !== targetPos) {
-			await role.setPosition(targetPos, {
-				reason: "Позиция цветовой роли над ролями пользователя"
+		// На всякий случай: если роль уже где-то стоит — опустим.
+		if (role.position !== LOWEST_POS) {
+			await role.setPosition(LOWEST_POS, {
+				reason: "Позиция цветовой роли: самый низкий приоритет (над @everyone)"
 			});
 		}
 

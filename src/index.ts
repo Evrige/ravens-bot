@@ -18,7 +18,6 @@ import {syncMembers} from "./utils/syncMembers";
 import {config} from "./config/env";
 import {recruitStatsCommand} from "./commands/ravens-family/recruit-stats";
 import {startRecruitStatsUpdater} from "./services/recruitStatsUpdater";
-import {startStaffListUpdater} from "./services/startStaffListUpdater";
 import {
 	banCommand,
 	muteCommand,
@@ -37,6 +36,8 @@ import {startMarketUpdater} from "./services/startMarketUpdater";
 import {marketAddCommand, marketCommand} from "./commands/ravens-family/market";
 import {profileCommand} from "./commands/ravens-family/profile";
 import {initMessageTracker} from "./services/messageTracker";
+import {startStaffListUpdater} from "./services/startStaffListUpdater";
+import {initTempVoice} from "./tempvoice/tempVoice";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -125,10 +126,11 @@ client.once("ready", async () => {
 	}
 	startMarketUpdater(client);
 	startTwitchChecker(client);
+	startStaffListUpdater(client);
 	initVoiceTracker(client);
 	initMessageTracker(client)
+	initTempVoice(client);
 	await startRecruitStatsUpdater();
-	await startStaffListUpdater();
 });
 
 
