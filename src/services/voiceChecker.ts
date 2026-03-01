@@ -1,6 +1,7 @@
 import { config } from "../config/env";
 import {Prisma} from "../generated/prisma/client";
 import {prisma} from "../utils/prisma";
+import {xpForNextLevel} from "../utils/xpForNextLevel";
 
 // userId -> { joinTime, guildId, channelId }
 const voiceTracker = new Map<string, { joinTime: number; guildId: string; channelId: string }>();
@@ -70,19 +71,45 @@ async function handleLeave(userId: string, oldState: any, client: any) {
 	// ===== НАЧИСЛЕНИЕ МОНЕТ (0.1 за минуту) =====
 	const minutes = Math.floor(timeSpentMs / 60000);
 	if (minutes <= 0) return;
+	const XP_PER_MINUTE = 2;
+	const xpToAdd = BigInt(minutes * XP_PER_MINUTE);
 
 	const coinsToAdd = new Prisma.Decimal(minutes * 0.1); // Decimal хранит дробные монеты
 
-	await prisma.user.upsert({
+	const updated = await prisma.user.upsert({
 		where: { id: userId },
 		update: {
 			timeInVoice: { increment: timeSpent },
-			balance: { increment: coinsToAdd }
+			balance: { increment: coinsToAdd },
+			xp: { increment: xpToAdd }
 		},
 		create: {
 			id: userId,
 			timeInVoice: timeSpent,
-			balance: coinsToAdd
+			balance: coinsToAdd,
+			xp: xpToAdd,
+			level: 0,
+			messageCount: 0n
 		}
 	});
+
+// левелап
+	let level = updated.level;
+	let xp = Number(updated.xp ?? 0n);
+	let need = xpForNextLevel(level);
+
+	let leveledUp = false;
+	while (xp >= need) {
+		xp -= need;
+		level += 1;
+		need = xpForNextLevel(level);
+		leveledUp = true;
+	}
+
+	if (leveledUp) {
+		await prisma.user.update({
+			where: { id: userId },
+			data: { level, xp: BigInt(xp) }
+		});
+	}
 }

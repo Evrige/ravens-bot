@@ -17,9 +17,9 @@ model User {
   level        Int           @default(0)
   messageCount BigInt        @default(0)
   isMute       Boolean       @default(false)
+  xp           BigInt   @default(0)
   recruitApps  Application[] @relation("RecruitApplications")
   applications Application[] @relation("UserApplications")
-  hives        Hive[]
   roles        Role[]
   selling      Selling[]
 }
@@ -72,7 +72,6 @@ model Hive {
   createdAt      DateTime     @default(now())
   status         HiveStatus   @default(PENDING)
   organisation   Organisation @relation(fields: [organisationId], references: [id])
-  user           User         @relation(fields: [userId], references: [id])
 }
 
 model Application {

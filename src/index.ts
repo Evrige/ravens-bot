@@ -35,6 +35,8 @@ import {streamerRemoveCommand} from "./commands/ravens-family/streamer-remove";
 import {balanceCheckCommand, balanceCommand, giveCommand, takeCommand} from "./commands/ravens-family/balanceKeeper";
 import {startMarketUpdater} from "./services/startMarketUpdater";
 import {marketAddCommand, marketCommand} from "./commands/ravens-family/market";
+import {profileCommand} from "./commands/ravens-family/profile";
+import {initMessageTracker} from "./services/messageTracker";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -44,6 +46,8 @@ export const client = new Client({
 		GatewayIntentBits.GuildMembers,
 		GatewayIntentBits.GuildPresences,
 		GatewayIntentBits.GuildVoiceStates,
+		GatewayIntentBits.GuildMessages,
+		GatewayIntentBits.MessageContent
 	],
 	partials: [Partials.Channel]
 });
@@ -71,6 +75,7 @@ const familyCommands = [
 	takeCommand.data.toJSON(),
 	marketCommand.data.toJSON(),
 	marketAddCommand.data.toJSON(),
+	profileCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -121,6 +126,7 @@ client.once("ready", async () => {
 	startMarketUpdater(client);
 	startTwitchChecker(client);
 	initVoiceTracker(client);
+	initMessageTracker(client)
 	await startRecruitStatsUpdater();
 	await startStaffListUpdater();
 });

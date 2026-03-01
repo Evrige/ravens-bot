@@ -1,19 +1,23 @@
 import { ButtonInteraction } from "discord.js";
 import { prisma } from "../../utils/prisma";
-import {Decimal} from "@prisma/client/runtime/client";
+import {Decimal} from "../../generated/prisma/internal/prismaNamespace";
 
-export async function handleSimplePurchase(interaction: ButtonInteraction, userId: string, item: { id: bigint, name: string, price: Decimal }) {
+export async function handleSimplePurchase(
+	interaction: ButtonInteraction,
+	item: { id: bigint; name: string; price: Decimal }
+) {
+	const userId = interaction.user.id;
+
 	const user = await prisma.user.findUnique({ where: { id: userId } });
-	if (!user) return interaction.reply({ content: "❌ Пользователь не найден.", ephemeral: true });
+	if (!user)
+		return interaction.reply({ content: "❌ Пользователь не найден.", ephemeral: true });
 
-	const userBalance = (user.balance as any).toNumber();
-	const price = Number(item.price);
+	if (user.balance < item.price)
+		return interaction.reply({
+			content: `❌ Недостаточно монет.`,
+			ephemeral: true
+		});
 
-	if (userBalance < price) {
-		return interaction.reply({ content: `❌ Недостаточно монет. Нужно ${price}, а у вас ${userBalance}.`, ephemeral: true });
-	}
-
-	// Списываем деньги и фиксируем покупку
 	await prisma.$transaction([
 		prisma.user.update({
 			where: { id: userId },
@@ -24,5 +28,8 @@ export async function handleSimplePurchase(interaction: ButtonInteraction, userI
 		})
 	]);
 
-	await interaction.reply({ content: `✅ Вы купили **${item.name}** за ${price} монет.`, ephemeral: true });
+	await interaction.reply({
+		content: `✅ Вы купили **${item.name}** за ${item.price} монет.`,
+		ephemeral: true
+	});
 }

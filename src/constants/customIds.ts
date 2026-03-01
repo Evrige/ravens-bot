@@ -32,6 +32,7 @@ export const CUSTOM_IDS = {
 	FAMILY_DECLINE_REASON_IN_FAMILY: "FAMILY_DECLINE_REASON_IN_FAMILY_",
 	FAMILY_REASON_IN_FAMILY: "FAMILY_REASON_IN_FAMILY_",
 	MARKET_BUTTON: "market_buy_",
+	ROLE_BUY: "role_buy_",
 };
 
 export const CUSTOM_COMMAND = {
@@ -40,6 +41,7 @@ export const CUSTOM_COMMAND = {
 	RECRUIT_STATS: "recruit-stats",
 	STAFF_LIST: "staff-list",
 	BALANCE: "balance",
+	PROFILE: "profile",
 	VOICETOP: "voice-top",
 	STREAMER_ADD: "streamer-add",
 	STREAMER_REMOVE: "streamer-remove",

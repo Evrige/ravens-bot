@@ -21,6 +21,7 @@ import {balanceCheckCommand, balanceCommand, giveCommand, takeCommand} from "../
 import {handleMarketButtons} from "./market/handleMarketButtons";
 import {marketAddCommand, marketCommand} from "../commands/ravens-family/market";
 import {handleMarketModalSubmit} from "./market/handleMarketModalSubmit";
+import {profileCommand} from "../commands/ravens-family/profile";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -43,6 +44,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.BALANCE_CHECK]: balanceCheckCommand,
 	[CUSTOM_COMMAND.MARKET]: marketCommand,
 	[CUSTOM_COMMAND.MARKET_ADD]: marketAddCommand,
+	[CUSTOM_COMMAND.PROFILE]: profileCommand,
 };
 
 // ================== Обработчик интеракций ==================
