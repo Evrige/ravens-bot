@@ -109,6 +109,7 @@ export async function handleHiveDeclineReasonSubmit(interaction: ModalSubmitInte
 			}
 		}
 
+
 		// если канал пустой — удалить
 		const left = await ch.messages.fetch({ limit: 10 }).catch(() => null);
 		if (left && left.size === 0) {
