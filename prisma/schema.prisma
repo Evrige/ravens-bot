@@ -58,6 +58,8 @@ model Organisation {
   id    BigInt  @id @default(autoincrement())
   name  String
   type  OrgType
+  color     String   @default("#5865F2")
+  channelId String?
   hives Hive[]
 }
 

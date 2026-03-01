@@ -1,11 +1,18 @@
-import {ActionRowBuilder, GuildMember, ModalBuilder, TextInputBuilder, TextInputStyle} from "discord.js";
-import {CUSTOM_IDS} from "../../../constants/customIds";
-import {createInput} from "../../../components/createInput";
+import {
+	ActionRowBuilder,
+	GuildMember,
+	ModalBuilder,
+	TextInputBuilder,
+	TextInputStyle
+} from "discord.js";
+import { CUSTOM_IDS } from "../../../constants/customIds";
+import { createInput } from "../../../components/createInput";
 
 export async function openDBApplicationModal(
 	interaction: any,
 	data?: any,
-	messageId?: string
+	messageId?: string,
+	organisationIdStr?: string
 ) {
 	const member = interaction.member as GuildMember;
 	const nickname = member?.nickname || interaction.user.username;
@@ -13,13 +20,18 @@ export async function openDBApplicationModal(
 	const getValueByName = (name: string) =>
 		data?.find((item: any) => item.name === name)?.value ?? "";
 
+	// Для новой заявки нужен orgId
+	if (!data && !messageId && !organisationIdStr) {
+		return interaction.reply({ content: "❌ Не выбрана организация.", ephemeral: true });
+	}
+
+	// ✅ для новой: hive_modal_new:<orgId>
+	const modalId = messageId
+		? `${CUSTOM_IDS.MODAL_EDIT}${messageId}`
+		: `${CUSTOM_IDS.HIVE_MODAL_NEW}:${organisationIdStr}`;
 
 	const modal = new ModalBuilder()
-		.setCustomId(
-			messageId
-				? `${CUSTOM_IDS.MODAL_EDIT}${messageId}`
-				: CUSTOM_IDS.MODAL_NEW
-		)
+		.setCustomId(modalId)
 		.setTitle(data ? "Редактирование" : "Форма заявки");
 
 	const nameInput = createInput({
@@ -35,8 +47,9 @@ export async function openDBApplicationModal(
 		label: "Тип улики (1 или 0)",
 		placeholder: "1 - Обязательная, 0 - Не обязательная",
 		style: TextInputStyle.Short,
-		defaultValue: getValueByName("Тип улики") === "Обязательная" ? "1" :
-			getValueByName("Тип улики") === "Не обязательная" ? "0" : ""
+		defaultValue:
+			getValueByName("Тип улики") === "Обязательная" ? "1" :
+				getValueByName("Тип улики") === "Не обязательная" ? "0" : ""
 	});
 
 	const storyInput = createInput({
@@ -55,20 +68,11 @@ export async function openDBApplicationModal(
 		defaultValue: getValueByName("Видео")
 	});
 
-	const targetInput = createInput({
-		id: CUSTOM_IDS.TARGET,
-		label: "На кого улика",
-		placeholder: "Фракция/Семья на кого улика",
-		style: TextInputStyle.Short,
-		defaultValue: getValueByName("На кого улика")
-	});
-
 	modal.addComponents(
 		new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
 		new ActionRowBuilder<TextInputBuilder>().addComponents(typeInput),
 		new ActionRowBuilder<TextInputBuilder>().addComponents(storyInput),
 		new ActionRowBuilder<TextInputBuilder>().addComponents(videoInput),
-		new ActionRowBuilder<TextInputBuilder>().addComponents(targetInput)
 	);
 
 	return interaction.showModal(modal);

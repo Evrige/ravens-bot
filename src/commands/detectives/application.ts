@@ -1,18 +1,22 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
-import {applicationButton} from "../../utils/applicationButton";
-import {CUSTOM_COMMAND, CUSTOM_IDS} from "../../constants/customIds";
+import { SlashCommandBuilder, ChatInputCommandInteraction, TextChannel } from "discord.js";
+import { CUSTOM_COMMAND } from "../../constants/customIds";
+import {upsertHivePanelInChannel} from "../../services/upsertHivePanel";
 
 export const hiveCommand = {
 	data: new SlashCommandBuilder()
 		.setName(CUSTOM_COMMAND.DB_APPLICATION)
-		.setDescription("Отправить заявку на подачу улики"),
+		.setDescription("Создать/обновить панель подачи улики (2 селекта)"),
 
 	async execute(interaction: ChatInputCommandInteraction) {
-		await applicationButton(
-			interaction,
-			CUSTOM_IDS.OPEN_APPLICATION,
-			"ПОДАТЬ УЛИКУ",
-			"https://tv.ua/i/88/99/36/889936/178652c70311608a54bbb99b45a7e10b-quality_70Xresize_crop_1Xallow_enlarge_0Xw_750Xh_463.jpg" // картинка для сообщения
-		);
-	}
+		await interaction.deferReply({ ephemeral: true });
+
+		const ch = interaction.channel;
+		if (!ch || !ch.isTextBased()) return interaction.editReply("❌ Канал не поддерживается.");
+
+		// важно: нужен именно TextChannel (не thread)
+		const channel = ch as TextChannel;
+
+		const res = await upsertHivePanelInChannel(channel);
+		return interaction.editReply(res.mode === "created" ? "✅ Панель создана." : "✅ Панель обновлена.");
+	},
 };

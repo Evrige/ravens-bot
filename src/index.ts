@@ -38,6 +38,7 @@ import {profileCommand} from "./commands/ravens-family/profile";
 import {initMessageTracker} from "./services/messageTracker";
 import {startStaffListUpdater} from "./services/startStaffListUpdater";
 import {initTempVoice} from "./tempvoice/tempVoice";
+import {organisationAddCommand} from "./commands/detectives/organisation-add";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -80,25 +81,26 @@ const familyCommands = [
 ];
 
 const hiveCommands = [
-	hiveCommand.data.toJSON()
+	hiveCommand.data.toJSON(),
+	organisationAddCommand.data.toJSON(),
 ];
 
-// const serversCommands = [
-// 	{
-// 		guildId: process.env.FAMILY_SERVER_GUID!,
-// 		commands: familyCommands
-// 	},
-// 	{
-// 		guildId: process.env.FAMILY_SERVER_GUID!,
-// 		commands: hiveCommands
-// 	}
-// ];
 const serversCommands = [
 	{
 		guildId: process.env.FAMILY_SERVER_GUID!,
-		commands: [...familyCommands, ...hiveCommands]
+		commands: familyCommands
+	},
+	{
+		guildId: process.env.DB_SERVER_GUID!,
+		commands: hiveCommands
 	}
 ];
+// const serversCommands = [
+// 	{
+// 		guildId: process.env.FAMILY_SERVER_GUID!,
+// 		commands: [...familyCommands, ...hiveCommands]
+// 	}
+// ];
 // =======================================================
 // Ready
 // =======================================================
@@ -108,27 +110,33 @@ client.once("ready", async () => {
 	startWebServer();
 	const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
 
-	// Регистрация команд по серверам
+	// 1) Регистрируем команды по серверам (без syncMembers внутри цикла)
 	for (const { guildId, commands } of serversCommands) {
 		try {
 			await rest.put(
 				Routes.applicationGuildCommands(client.user!.id, guildId),
 				{ body: commands }
 			);
-			await syncMembers(client, config.FAMILY_SERVER_GUID)
 			console.log(`✅ Команды зарегистрированы на сервере ${guildId}`);
 		} catch (error) {
-			console.error(
-				`❌ Ошибка регистрации команд на сервере ${guildId}:`,
-				error
-			);
+			console.error(`❌ Ошибка регистрации команд на сервере ${guildId}:`, error);
 		}
 	}
+
+	// 2) Синхроним участников ОДИН раз (и только нужный сервер)
+	try {
+		await syncMembers(client, config.FAMILY_SERVER_GUID);
+		console.log("✅ syncMembers завершён");
+	} catch (e) {
+		console.error("❌ syncMembers error:", e);
+	}
+
+	// остальное
 	startMarketUpdater(client);
 	startTwitchChecker(client);
 	startStaffListUpdater(client);
 	initVoiceTracker(client);
-	initMessageTracker(client)
+	initMessageTracker(client);
 	initTempVoice(client);
 	await startRecruitStatsUpdater();
 });

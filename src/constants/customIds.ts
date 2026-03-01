@@ -7,19 +7,12 @@ export const CUSTOM_IDS = {
 	OPEN_FAMILY_APPLICATION: "OPEN_FAMILY_APPLICATION",
 	MODAL_NEW: "application_modal_",
 	FAMILY_MODAL_NEW: "family_application_modal_",
-	MODAL_EDIT: "application_modal_edit_",
-	DECLINE_REASON: "decline_reason_",
-	REASON: "reason",
-	ACCEPT: "accept_",
-	ACCEPT_HIVE: "ACCEPT_HIVE_",
-	DECLINE_HIVE: "DECLINE_HIVE_",
-	DECLINE: "decline_",
-	CHANGE: "change_",
-	COPY_TEXT: "copy_text",
-	GAME_NAME: "game_name",
+	HIVE_ORGTYPE_SELECT: "hive_orgtype_select",
+	HIVE_ORG_SELECT: "hive_org_select",
+	HIVE_ACCEPT: "hive_accept",
+	HIVE_DECLINE: "hive_decline",
+	HIVE_DECLINE_REASON: "hive_decline_reason",
 	HIVE_TYPE: "type",
-	STORY: "story",
-	VIDEO: "video",
 	TARGET: "target",
 	APPLICATION_FAMILY_NAME: "Игровой никнейм | Статик",
 	APPLICATION_FAMILY_AGE: "Ваш возраст ООС",
@@ -33,10 +26,37 @@ export const CUSTOM_IDS = {
 	FAMILY_REASON_IN_FAMILY: "FAMILY_REASON_IN_FAMILY_",
 	MARKET_BUTTON: "market_buy_",
 	ROLE_BUY: "role_buy_",
+
+
+	HIVE_SELECT_FAMILY: "hive_select_family",
+	HIVE_SELECT_FRACTION: "hive_select_fraction",
+	HIVE_SELECT_HIVETYPE: "hive_select_hivetype",
+
+	// модалки
+	HIVE_MODAL_NEW: "hive_modal_new",
+	MODAL_EDIT: "modal_edit_",
+	DECLINE_REASON: "decline_reason_",
+
+	// кнопки в личном канале заявки
+	ACCEPT: "accept_",
+	DECLINE: "decline_",
+	CHANGE: "change_",
+
+	// лог: копирование и финализация
+	COPY_TEXT: "copy_text_",
+	ACCEPT_HIVE: "accept_hive_",
+	DECLINE_HIVE: "decline_hive_",
+
+	// inputs
+	GAME_NAME: "game_name",
+	STORY: "story",
+	VIDEO: "video",
+	REASON: "reason",
 };
 
 export const CUSTOM_COMMAND = {
 	DB_APPLICATION: "заявка_улики",
+	DB_ORGANISATION_ADD: "organisation-add",
 	FAMILY_APPLICATION: "заявк_в_семью",
 	RECRUIT_STATS: "recruit-stats",
 	STAFF_LIST: "staff-list",
