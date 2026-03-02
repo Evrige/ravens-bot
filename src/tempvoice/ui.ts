@@ -1,4 +1,3 @@
-// src/tempvoice/ui.ts
 import {
 	ActionRowBuilder,
 	ButtonBuilder,

@@ -31,7 +31,7 @@ export const CUSTOM_IDS = {
 	HIVE_SELECT_FAMILY: "hive_select_family",
 	HIVE_SELECT_FRACTION: "hive_select_fraction",
 	HIVE_SELECT_HIVETYPE: "hive_select_hivetype",
-
+	SET_FORM: "hive_set_form:",
 	// модалки
 	HIVE_MODAL_NEW: "hive_modal_new",
 	MODAL_EDIT: "modal_edit_",

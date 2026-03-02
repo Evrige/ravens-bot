@@ -31,9 +31,7 @@ export async function buildHivePanelMessage() {
 	const embed = new EmbedBuilder()
 		.setTitle("🧾 Подача улики")
 		.setDescription(
-			"Выбери организацию в одном из селектов ниже — откроется форма.\n" +
-			"Сообщение общее: выбирай сколько угодно раз, другие люди тоже могут выбирать."
-		);
+			"Выбери организацию в одном из селектов ниже — откроется форма.");
 
 	const components = [];
 	if (families.length) components.push(buildOrgSelect(CUSTOM_IDS.HIVE_SELECT_FAMILY, "🏠 FAMILY — выбери семью", families as any));

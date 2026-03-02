@@ -71,6 +71,8 @@ model Hive {
   link           String
   form           Form
   story          String
+  isUsed Boolean @default(false)
+  logUrl String?
   createdAt      DateTime     @default(now())
   status         HiveStatus   @default(PENDING)
   organisation   Organisation @relation(fields: [organisationId], references: [id])
