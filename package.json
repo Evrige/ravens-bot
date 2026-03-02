@@ -9,12 +9,15 @@
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
     "@prisma/adapter-pg": "^7.4.1",
     "axios": "^1.13.6",
     "canvas": "^3.2.1",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
+    "fs": "^0.0.1-security",
+    "googleapis": "^171.4.0",
     "pg": "^8.18.0"
   },
   "devDependencies": {

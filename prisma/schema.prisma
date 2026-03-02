@@ -57,7 +57,10 @@ model Selling {
 model Organisation {
   id    BigInt  @id @default(autoincrement())
   name  String
+  subject String?
+  adress String?
   type  OrgType
+  isFreeze Boolean @default(false)
   color     String   @default("#5865F2")
   channelId String?
   hives Hive[]

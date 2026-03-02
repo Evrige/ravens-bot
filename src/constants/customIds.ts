@@ -46,7 +46,7 @@ export const CUSTOM_IDS = {
 	COPY_TEXT: "copy_text_",
 	ACCEPT_HIVE: "accept_hive_",
 	DECLINE_HIVE: "decline_hive_",
-
+	CREATE_CASE: "hive_create_case:",
 	// inputs
 	GAME_NAME: "game_name",
 	STORY: "story",

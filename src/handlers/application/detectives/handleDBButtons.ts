@@ -9,6 +9,7 @@ import {
 	ModalBuilder,
 	TextInputBuilder,
 	TextInputStyle,
+	MessageFlags,
 } from "discord.js";
 import { prisma } from "../../../utils/prisma";
 import { CUSTOM_IDS } from "../../../constants/customIds";
@@ -17,9 +18,30 @@ import { createButton } from "../../../components/createButton";
 import { config } from "../../../config/env";
 import { openDBApplicationModal } from "./openDBApplicationModal";
 import { postHiveToForum } from "./postHiveToOrgForum";
+import {createCaseDocument} from "../../../services/googleDocs";
 
 function isStaff(member: GuildMember) {
 	return member.roles.cache.some((r) => DB_STAFF_ROLE_IDS.includes(r.id));
+}
+
+// ✅ безопасный deferReply (чтобы не падало при 503)
+async function safeDeferReply(interaction: any) {
+	try {
+		// лучше через flags, а не ephemeral (discord.js v14 предупреждает)
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		return true;
+	} catch (e: any) {
+		console.log("[db] deferReply failed:", e?.status ?? "", e?.message ?? e);
+		try {
+			if (!interaction.replied && !interaction.deferred) {
+				await interaction.reply({
+					content: "⚠️ Discord временно недоступен. Нажми ещё раз через пару секунд.",
+					flags: MessageFlags.Ephemeral,
+				});
+			}
+		} catch {}
+		return false;
+	}
 }
 
 export function buildDBButtons(hiveId: string, ownerId: string) {
@@ -74,6 +96,50 @@ function removeRows(msg: any) {
 
 export async function handleDBButtons(interaction: any) {
 	if (!interaction.isButton()) return;
+
+	// ===================== CREATE_CASE =====================
+	if (interaction.customId.startsWith(CUSTOM_IDS.CREATE_CASE)) {
+		const member = interaction.member as GuildMember;
+
+		if (!isStaff(member)) {
+			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+		}
+
+		const ok = await safeDeferReply(interaction);
+		if (!ok) return;
+
+		const orgId = BigInt(interaction.customId.replace(CUSTOM_IDS.CREATE_CASE, ""));
+
+		const organisation = await prisma.organisation.findUnique({
+			where: { id: orgId },
+		});
+
+		if (!organisation) {
+			return interaction.editReply("❌ Организация не найдена.");
+		}
+
+		const hives = await prisma.hive.findMany({
+			where: {
+				organisationId: orgId,
+				status: "ACCEPTED",
+			},
+			orderBy: { id: "asc" },
+		});
+
+		if (!hives.length) {
+			return interaction.editReply("❌ Нет принятых улик.");
+		}
+
+		// ✅ ВАЖНО: передаём caseNumber
+		const caseNumber = Date.now();
+
+		const result = await createCaseDocument({
+			orgId: organisation.id,
+			caseNumber: Date.now(),
+		});
+
+		return interaction.editReply(`✅ Кейс создан:\n${result.url}`);
+	}
 
 	// ===================== COPY_TEXT (в логе) =====================
 	if (interaction.customId.startsWith(CUSTOM_IDS.COPY_TEXT)) {
