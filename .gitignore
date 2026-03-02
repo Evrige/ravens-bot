@@ -1,6 +1,8 @@
 /tmp
 /out-tsc
-
+client_secret_*.json
+*.oauth.json
+*.credentials.json
 /node_modules
 npm-debug.log*
 yarn-debug.log*
