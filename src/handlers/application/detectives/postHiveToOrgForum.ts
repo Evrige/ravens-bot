@@ -154,6 +154,7 @@ export async function postHiveToForum(opts: {
 		where: {
 			organisationId: org.id,
 			status: "ACCEPTED",
+			isUsed: false
 		},
 		orderBy: { id: "asc" },
 		select: { id: true, form: true, logUrl: true },

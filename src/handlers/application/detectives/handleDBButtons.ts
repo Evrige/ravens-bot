@@ -97,50 +97,6 @@ function removeRows(msg: any) {
 export async function handleDBButtons(interaction: any) {
 	if (!interaction.isButton()) return;
 
-	// ===================== CREATE_CASE =====================
-	if (interaction.customId.startsWith(CUSTOM_IDS.CREATE_CASE)) {
-		const member = interaction.member as GuildMember;
-
-		if (!isStaff(member)) {
-			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
-		}
-
-		const ok = await safeDeferReply(interaction);
-		if (!ok) return;
-
-		const orgId = BigInt(interaction.customId.replace(CUSTOM_IDS.CREATE_CASE, ""));
-
-		const organisation = await prisma.organisation.findUnique({
-			where: { id: orgId },
-		});
-
-		if (!organisation) {
-			return interaction.editReply("❌ Организация не найдена.");
-		}
-
-		const hives = await prisma.hive.findMany({
-			where: {
-				organisationId: orgId,
-				status: "ACCEPTED",
-			},
-			orderBy: { id: "asc" },
-		});
-
-		if (!hives.length) {
-			return interaction.editReply("❌ Нет принятых улик.");
-		}
-
-		// ✅ ВАЖНО: передаём caseNumber
-		const caseNumber = Date.now();
-
-		const result = await createCaseDocument({
-			orgId: organisation.id,
-			caseNumber: Date.now(),
-		});
-
-		return interaction.editReply(`✅ Кейс создан:\n${result.url}`);
-	}
-
 	// ===================== COPY_TEXT (в логе) =====================
 	if (interaction.customId.startsWith(CUSTOM_IDS.COPY_TEXT)) {
 		const member = interaction.member as GuildMember;

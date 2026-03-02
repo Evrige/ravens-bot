@@ -343,25 +343,29 @@ async function applyStylesAndLinks(
 
 /* ===================== MAIN ===================== */
 
-export async function createCaseDocument(params: { orgId: bigint; caseNumber: number | string }) {
+export async function createCaseDocument(params: { orgId: bigint;
+	caseNumber: number | string;
+	hiveIds: bigint[];  }) {
 	const auth = getOAuthClient();
 	const drive = google.drive({ version: "v3", auth });
 	const docs = google.docs({ version: "v1", auth });
 
 	const org = await prisma.organisation.findUnique({
 		where: { id: params.orgId },
-		include: {
-			hives: {
-				where: { status: "ACCEPTED" },
-				orderBy: { id: "asc" },
-			},
-		},
+		select: { id: true, name: true, subject: true, adress: true, color: true },
+	});
+	if (!org) throw new Error("Организация не найдена");
+
+// берём именно улики кейса
+	const hives = await prisma.hive.findMany({
+		where: { id: { in: params.hiveIds } },
+		orderBy: { id: "asc" }, // можно оставить, порядок в кейсе всё равно 1..11 у тебя
+		select: { story: true, link: true, form: true },
 	});
 
-	if (!org) throw new Error("Организация не найдена");
-	if (!org.hives.length) throw new Error("Нет принятых улик");
+	if (hives.length !== params.hiveIds.length) throw new Error("Часть улик не найдена");
 
-	const { block: hivesBlock, linksInOrder } = buildHivesBlockAndLinks(org.hives as any);
+	const { block: hivesBlock, linksInOrder } = buildHivesBlockAndLinks(hives as any);
 
 	const docName = `SD | PHX №0`;
 

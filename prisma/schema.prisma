@@ -79,6 +79,34 @@ model Hive {
   createdAt      DateTime     @default(now())
   status         HiveStatus   @default(PENDING)
   organisation   Organisation @relation(fields: [organisationId], references: [id])
+
+  caseHives CaseHive[]
+}
+
+model Case {
+  id         BigInt   @id @default(autoincrement())
+  caseNumber Int      @unique // или String если надо
+  orgId      BigInt
+  status     String   @default("PENDING") // PENDING | ACCEPTED
+  createdAt  DateTime @default(now())
+  docId      String?
+  docUrl     String?
+  // где лежит публичное сообщение
+  channelId  String?
+  messageId  String?
+
+  caseHives  CaseHive[]
+}
+
+model CaseHive {
+  id      BigInt @id @default(autoincrement())
+  caseId  BigInt
+  hiveId  BigInt
+
+  Case    Case   @relation(fields: [caseId], references: [id])
+  Hive    Hive   @relation(fields: [hiveId], references: [id])
+
+  @@unique([caseId, hiveId])
 }
 
 model Application {
