@@ -39,6 +39,7 @@ import {initMessageTracker} from "./services/messageTracker";
 import {startStaffListUpdater} from "./services/startStaffListUpdater";
 import {initTempVoice} from "./tempvoice/tempVoice";
 import {organisationAddCommand} from "./commands/detectives/organisation-add";
+import {upsertFamilyListPanel} from "./services/upsertFamilyListPanel";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -138,6 +139,7 @@ client.once("ready", async () => {
 	initVoiceTracker(client);
 	initMessageTracker(client);
 	initTempVoice(client);
+	await upsertFamilyListPanel(client);
 	await startRecruitStatsUpdater();
 });
 

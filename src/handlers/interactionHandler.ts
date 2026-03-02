@@ -28,6 +28,7 @@ import { client } from "../index";
 import {handleHiveSelectMenus} from "./application/detectives/handleHiveSelectMenus";
 import {organisationAddCommand} from "../commands/detectives/organisation-add";
 import {handleHiveDeclineReasonSubmit} from "./application/detectives/handleHiveDeclineReasonSubmit";
+import {handleFamilyEditModal, handleFamilyListPanelButtons} from "./application/detectives/familyListPanelHandler";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -72,7 +73,7 @@ export async function handleInteractions(interaction: Interaction) {
 			await handleDBButtons(interaction);
 			await handleFamilyButtons(interaction);
 			await handleMarketButtons(interaction);
-
+			await handleFamilyListPanelButtons(interaction);
 			if (interaction.customId.startsWith("staff_toggle:")) {
 				const handled = await handleStaffListToggle(client, interaction);
 				if (handled) return;
@@ -85,6 +86,7 @@ export async function handleInteractions(interaction: Interaction) {
 			await handleFamilySubmit(interaction);
 			await handleMarketModalSubmit(interaction);
 			await handleHiveDeclineReasonSubmit(interaction);
+			await handleFamilyEditModal(interaction);
 			return;
 		}
 	} catch (e) {
