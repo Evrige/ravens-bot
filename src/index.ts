@@ -40,6 +40,11 @@ import {startStaffListUpdater} from "./services/startStaffListUpdater";
 import {initTempVoice} from "./tempvoice/tempVoice";
 import {organisationAddCommand} from "./commands/detectives/organisation-add";
 import {upsertFamilyListPanel} from "./services/upsertFamilyListPanel";
+import {hiveStatsCommand} from "./commands/detectives/hive-stats";
+import {startHiveStatsUpdater} from "./services/startHiveStatsUpdater";
+import {weeklyFeeAddCommand} from "./commands/ravens-family/weekly-fee-add";
+import {weeklyFeePanelCommand} from "./commands/ravens-family/weekly-fee-panel";
+import {startWeeklyFeeUpdater} from "./services/startWeeklyFeeUpdater";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -79,11 +84,14 @@ const familyCommands = [
 	marketCommand.data.toJSON(),
 	marketAddCommand.data.toJSON(),
 	profileCommand.data.toJSON(),
+	weeklyFeeAddCommand.data.toJSON(),
+	weeklyFeePanelCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
 	hiveCommand.data.toJSON(),
 	organisationAddCommand.data.toJSON(),
+	hiveStatsCommand.data.toJSON(),
 ];
 
 const serversCommands = [
@@ -135,6 +143,8 @@ client.once("ready", async () => {
 	// остальное
 	startMarketUpdater(client);
 	startTwitchChecker(client);
+	startWeeklyFeeUpdater(client);
+	startHiveStatsUpdater(client)
 	startStaffListUpdater(client);
 	initVoiceTracker(client);
 	initMessageTracker(client);

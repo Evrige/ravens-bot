@@ -35,6 +35,10 @@ import {
 	handleCreateCaseButton,
 	handleCreateCaseModal
 } from "./cases/handleCases";
+import {hiveStatsCommand} from "../commands/detectives/hive-stats";
+import {handleWeeklyFeeUI} from "./handleWeeklyFeeUI";
+import {weeklyFeeAddCommand} from "../commands/ravens-family/weekly-fee-add";
+import {weeklyFeePanelCommand} from "../commands/ravens-family/weekly-fee-panel";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -59,6 +63,9 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.MARKET_ADD]: marketAddCommand,
 	[CUSTOM_COMMAND.PROFILE]: profileCommand,
 	[CUSTOM_COMMAND.DB_ORGANISATION_ADD]: organisationAddCommand,
+	[CUSTOM_COMMAND.DB_HIVE_STATS]: hiveStatsCommand,
+	[CUSTOM_COMMAND.FEE_ADD]: weeklyFeeAddCommand,
+	[CUSTOM_COMMAND.FEE_PANEL]: weeklyFeePanelCommand,
 };
 
 // ================== Обработчик интеракций ==================
@@ -82,6 +89,7 @@ export async function handleInteractions(interaction: Interaction) {
 			await handleFamilyButtons(interaction);
 			await handleMarketButtons(interaction);
 			await handleFamilyListPanelButtons(interaction);
+			await handleWeeklyFeeUI(interaction);
 			if (interaction.customId.startsWith("staff_toggle:")) {
 				const handled = await handleStaffListToggle(client, interaction);
 				if (handled) return;
@@ -97,6 +105,7 @@ export async function handleInteractions(interaction: Interaction) {
 			await handleMarketModalSubmit(interaction);
 			await handleHiveDeclineReasonSubmit(interaction);
 			await handleFamilyEditModal(interaction);
+			await handleWeeklyFeeUI(interaction);
 			return;
 		}
 	} catch (e) {

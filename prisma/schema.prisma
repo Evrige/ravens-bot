@@ -135,7 +135,17 @@ model Streamer {
   createdAt     DateTime @default(now())
 }
 
+model WeeklyFeeSettings {
+  id    Int @id @default(1)
+  price Int
+}
 
+model WeeklyFeePayment {
+  userId    String @id
+  paidFrom  DateTime
+  totalPaid Int
+  updatedAt DateTime @updatedAt
+}
 
 model BotMessage {
   type      String @id

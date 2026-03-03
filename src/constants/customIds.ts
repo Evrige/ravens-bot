@@ -52,6 +52,10 @@ export const CUSTOM_IDS = {
 	STORY: "story",
 	VIDEO: "video",
 	REASON: "reason",
+
+	WEEKLY_FEE_PRICE_EDIT: "weekly_fee_price_edit",
+	WEEKLY_FEE_PRICE_MODAL: "weekly_fee_price_modal",
+	WEEKLY_FEE_PRICE_INPUT: "weekly_fee_price_input",
 };
 
 export const CUSTOM_COMMAND = {
@@ -76,5 +80,7 @@ export const CUSTOM_COMMAND = {
 	UNWARN: "unwarn",
 	UNBAN: "unban",
 	UNMUTE: "unmute",
-
+	DB_HIVE_STATS: "hive-stats",
+	FEE_ADD: "fee_add",
+	FEE_PANEL: "fee_panel",
 }
