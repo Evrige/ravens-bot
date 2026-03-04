@@ -39,6 +39,7 @@ import {hiveStatsCommand} from "../commands/detectives/hive-stats";
 import {handleWeeklyFeeUI} from "./handleWeeklyFeeUI";
 import {weeklyFeeAddCommand} from "../commands/ravens-family/weekly-fee-add";
 import {weeklyFeePanelCommand} from "../commands/ravens-family/weekly-fee-panel";
+import {weeklyFeeRemoveCommand} from "../commands/ravens-family/weekly-fee-remove";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -66,6 +67,8 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.DB_HIVE_STATS]: hiveStatsCommand,
 	[CUSTOM_COMMAND.FEE_ADD]: weeklyFeeAddCommand,
 	[CUSTOM_COMMAND.FEE_PANEL]: weeklyFeePanelCommand,
+	[CUSTOM_COMMAND.FEE_PANEL]: weeklyFeePanelCommand,
+	[CUSTOM_COMMAND.FEE_REMOVE]: weeklyFeeRemoveCommand,
 };
 
 // ================== Обработчик интеракций ==================

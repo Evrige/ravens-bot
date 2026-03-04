@@ -1,9 +1,16 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import {
+	ChatInputCommandInteraction,
+	SlashCommandBuilder,
+	EmbedBuilder,
+	TextChannel,
+	ChannelType
+} from "discord.js";
 import { checkRolesOrReply } from "../../utils/checkRoles";
 import { FAMILY_HIGH_ROLE_IDS } from "../../config/staff";
 import { prisma } from "../../utils/prisma";
 import { updateWeeklyFeePanel } from "../../services/updateWeeklyFeePanel";
-import {CUSTOM_COMMAND} from "../../constants/customIds";
+import { CUSTOM_COMMAND } from "../../constants/customIds";
+import { config } from "../../config/env";
 
 function parseDateYYYYMMDD(s: string) {
 	// ожидаем "YYYY-MM-DD"
@@ -25,6 +32,58 @@ function startOfDay(d: Date) {
 
 function addDays(date: Date, days: number) {
 	return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function formatYYYYMMDD(d: Date) {
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
+}
+
+async function sendWeeklyFeeLog(params: {
+	interaction: ChatInputCommandInteraction;
+	targetUserId: string;
+	amount: number;
+	from: Date;
+	oldTotalPaid?: number | null;
+	newTotalPaid?: number | null;
+}) {
+	try {
+		const logChannelId = config.FAMILY_LOG_CHANNEL_ID;
+		if (!logChannelId) return;
+
+		const ch = await params.interaction.client.channels.fetch(logChannelId).catch(() => null);
+		if (!ch || ch.type !== ChannelType.GuildText) return;
+
+		const actor = params.interaction.user;
+		const embed = new EmbedBuilder()
+			.setTitle("💰 Недельный взнос")
+			.setDescription(
+				`**${actor}** занёс оплату взноса для **<@${params.targetUserId}>**\n` +
+				`Сумма: **${params.amount.toLocaleString()}🪙**`
+			)
+			.addFields(
+				{ name: "Дата начала (from)", value: `\`${formatYYYYMMDD(params.from)}\``, inline: true },
+				{ name: "Команда", value: `\`/${CUSTOM_COMMAND.FEE_ADD}\``, inline: true },
+			)
+			.setTimestamp();
+
+		// если хочешь показывать было/стало — оставил
+		if (typeof params.oldTotalPaid === "number" && typeof params.newTotalPaid === "number") {
+			embed.addFields({
+				name: "Всего оплачено",
+				value:
+					`Было: **${params.oldTotalPaid.toLocaleString()}🪙**\n` +
+					`Стало: **${params.newTotalPaid.toLocaleString()}🪙**`,
+				inline: false
+			});
+		}
+
+		await (ch as TextChannel).send({ embeds: [embed] }).catch(() => {});
+	} catch {
+		// не ломаем команду
+	}
 }
 
 export const weeklyFeeAddCommand = {
@@ -57,6 +116,8 @@ export const weeklyFeeAddCommand = {
 
 		const existing = await prisma.weeklyFeePayment.findUnique({ where: { userId: user.id } });
 
+		const oldTotalPaid = existing?.totalPaid ?? null;
+
 		// считаем текущую paidUntil, чтобы правильно “платить наперёд”
 		let newPaidFrom = from;
 		let newTotalPaid = amount;
@@ -82,7 +143,17 @@ export const weeklyFeeAddCommand = {
 			create: { userId: user.id, paidFrom: newPaidFrom, totalPaid: newTotalPaid }
 		});
 
-		await updateWeeklyFeePanel(interaction.client);
+		await updateWeeklyFeePanel(interaction.client).catch(() => {});
+
+		// ✅ лог в канал
+		await sendWeeklyFeeLog({
+			interaction,
+			targetUserId: user.id,
+			amount,
+			from: newPaidFrom,
+			oldTotalPaid,
+			newTotalPaid
+		});
 
 		return interaction.editReply(`✅ Оплата добавлена для <@${user.id}>: **${amount.toLocaleString()}🪙**`);
 	}

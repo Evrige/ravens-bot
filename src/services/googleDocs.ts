@@ -1,7 +1,8 @@
+// src/services/googleDocs.ts
 import { google } from "googleapis";
 import { prisma } from "../utils/prisma";
 import { config } from "../config/env";
-import {hexToRuColorName} from "../utils/getColorToText";
+import { hexToRuColorName } from "../utils/getColorToText";
 
 /* ===================== AUTH ===================== */
 
@@ -23,8 +24,6 @@ function replaceText(placeholder: string, value: string) {
 		},
 	};
 }
-
-
 
 /* ===================== STORY ===================== */
 
@@ -88,7 +87,6 @@ function normalizeUrl(raw: string | null | undefined): string | null {
 	const u = (raw || "").trim();
 	if (!u) return null;
 
-	// если в БД хранится "google.com" или "www...." — Docs API может не применить link
 	if (/^https?:\/\//i.test(u)) return u;
 	return `https://${u.replace(/^\/+/, "")}`;
 }
@@ -128,13 +126,11 @@ function walkStructuralElements(elements: any[], cb: (paragraph: any) => void) {
 	for (const el of elements) {
 		if (!el) continue;
 
-		// Paragraph
 		if (el.paragraph) {
 			cb(el.paragraph);
 			continue;
 		}
 
-		// Table
 		if (el.table) {
 			const rows = el.table.tableRows || [];
 			for (const row of rows) {
@@ -146,7 +142,6 @@ function walkStructuralElements(elements: any[], cb: (paragraph: any) => void) {
 			continue;
 		}
 
-		// Table of contents
 		if (el.tableOfContents) {
 			walkStructuralElements(el.tableOfContents.content || [], cb);
 			continue;
@@ -196,7 +191,6 @@ function docToFullTextAndMap(doc: any) {
 }
 
 function getDocumentEndIndex(doc: any): number {
-	// endIndex может быть в разных местах; надёжнее взять max по всем абзацам
 	let maxEnd = 1;
 	const root = doc?.body?.content || [];
 	walkStructuralElements(root, (p) => {
@@ -228,7 +222,7 @@ function findTaggedProofWordRanges(doc: any, count: number): Array<Range | null>
 		if (closePos === -1) continue;
 
 		const wordStartPos = openPos + ot.length;
-		const wordEndPos = closePos; // exclusive
+		const wordEndPos = closePos;
 
 		if (
 			wordStartPos >= 0 &&
@@ -326,7 +320,7 @@ async function applyStylesAndLinks(
 		});
 	}
 
-	// 4) Cleanup маркеров (после линковки)
+	// 4) Cleanup маркеров
 	const cleanup: any[] = [];
 	for (let i = 0; i < linksInOrder.length; i++) {
 		cleanup.push(replaceText(openTag(i), ""));
@@ -341,11 +335,29 @@ async function applyStylesAndLinks(
 	}
 }
 
+/* ===================== PERMISSIONS ===================== */
+
+async function setAnyoneWithLinkReader(driveApi: any, fileId: string) {
+	// Делает доступ: "Anyone with the link" -> "Viewer"
+	// ✅ supportsAllDrives на всякий случай (если папка/файл в shared drive)
+	await driveApi.permissions.create({
+		fileId,
+		requestBody: {
+			type: "anyone",
+			role: "reader",
+		},
+		fields: "id",
+		supportsAllDrives: true,
+	});
+}
+
 /* ===================== MAIN ===================== */
 
-export async function createCaseDocument(params: { orgId: bigint;
+export async function createCaseDocument(params: {
+	orgId: bigint;
 	caseNumber: number | string;
-	hiveIds: bigint[];  }) {
+	hiveIds: bigint[];
+}) {
 	const auth = getOAuthClient();
 	const drive = google.drive({ version: "v3", auth });
 	const docs = google.docs({ version: "v1", auth });
@@ -356,10 +368,9 @@ export async function createCaseDocument(params: { orgId: bigint;
 	});
 	if (!org) throw new Error("Организация не найдена");
 
-// берём именно улики кейса
 	const hives = await prisma.hive.findMany({
 		where: { id: { in: params.hiveIds } },
-		orderBy: { id: "asc" }, // можно оставить, порядок в кейсе всё равно 1..11 у тебя
+		orderBy: { id: "asc" },
 		select: { story: true, link: true, form: true },
 	});
 
@@ -367,7 +378,9 @@ export async function createCaseDocument(params: { orgId: bigint;
 
 	const { block: hivesBlock, linksInOrder } = buildHivesBlockAndLinks(hives as any);
 
-	const docName = `SD | PHX №0`;
+	// ✅ одно значение и в имени файла, и в {{CASE_NUMBER}}
+	const caseNumberStr = String(params.caseNumber).trim();
+	const docName = `SD | PHX №0${caseNumberStr}`;
 
 	// 1) копируем шаблон
 	const copy = await drive.files.copy({
@@ -377,14 +390,23 @@ export async function createCaseDocument(params: { orgId: bigint;
 			parents: [config.GOOGLE_CASES_FOLDER_ID],
 		},
 		fields: "id,name",
+		supportsAllDrives: true,
 	});
 
 	const docId = copy.data.id!;
 	if (!docId) throw new Error("Ошибка создания документа");
 
+	// ✅ 1.1) сразу выставляем права "доступ по ссылке"
+	try {
+		await setAnyoneWithLinkReader(drive, docId);
+	} catch (e: any) {
+		// Не валим создание кейса/дока, но логируем
+		console.error("[googleDocs] setAnyoneWithLinkReader failed:", e?.message ?? e);
+	}
+
 	// 2) replace placeholders
 	const requests: any[] = [];
-	requests.push(replaceText("{{CASE_NUMBER}}", String(params.caseNumber)));
+	requests.push(replaceText("{{CASE_NUMBER}}", `SD | PHX №0${caseNumberStr}`));
 	requests.push(replaceText("{{ORG_NAME}}", org.name));
 	requests.push(replaceText("{{ORG_SUBJECT}}", org.subject ?? "-"));
 	requests.push(replaceText("{{ORG_ADDRESS}}", org.adress ?? "-"));

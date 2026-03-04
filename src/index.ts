@@ -45,6 +45,7 @@ import {startHiveStatsUpdater} from "./services/startHiveStatsUpdater";
 import {weeklyFeeAddCommand} from "./commands/ravens-family/weekly-fee-add";
 import {weeklyFeePanelCommand} from "./commands/ravens-family/weekly-fee-panel";
 import {startWeeklyFeeUpdater} from "./services/startWeeklyFeeUpdater";
+import {weeklyFeeRemoveCommand} from "./commands/ravens-family/weekly-fee-remove";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -86,6 +87,7 @@ const familyCommands = [
 	profileCommand.data.toJSON(),
 	weeklyFeeAddCommand.data.toJSON(),
 	weeklyFeePanelCommand.data.toJSON(),
+	weeklyFeeRemoveCommand.data.toJSON(),
 ];
 
 const hiveCommands = [

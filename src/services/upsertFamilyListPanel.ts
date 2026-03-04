@@ -27,22 +27,29 @@ function chunk<T>(arr: T[], size: number): T[][] {
 	return out;
 }
 
-function safeNameLabel(name: string) {
-	// у кнопки лимит label 80
-	const trimmed = (name || "").trim();
-	return trimmed.length > 80 ? trimmed.slice(0, 77) + "…" : trimmed || "Без названия";
-}
-
-
 function buildFamiliesPanelV2Rows(
 	orgs: Array<{ id: bigint; name: string; isFreeze: boolean }>
 ) {
-	const perPage = 12; // одна семья = TextDisplay + ActionRow + Separator -> не делай слишком много
-	const pages = chunk(orgs, perPage);
-
-	const containers: any[] = [];
-
+	const perPage = 12;
 	const V2 = { Container: 17, TextDisplay: 10, Separator: 14 } as const;
+
+	// ✅ ВАЖНО: если семей нет — возвращаем 1 контейнер с заглушкой,
+	// иначе components будет [] и Discord даст 50006
+	if (!orgs.length) {
+		return [
+			{
+				type: V2.Container,
+				components: [
+					{ type: V2.TextDisplay, content: "## 👨‍👩‍👧‍👦 Семьи" },
+					{ type: V2.Separator },
+					{ type: V2.TextDisplay, content: "Пока нет семей." },
+				],
+			},
+		] as any[];
+	}
+
+	const pages = chunk(orgs, perPage);
+	const containers: any[] = [];
 
 	for (let p = 0; p < pages.length; p++) {
 		const page = pages[p];
@@ -61,42 +68,30 @@ function buildFamiliesPanelV2Rows(
 			],
 		};
 
-		if (!page.length) {
-			container.components.push({
-				type: V2.TextDisplay,
-				content: "Пока нет семей.",
-			});
-			containers.push(container);
-			continue;
-		}
-
 		for (const org of page) {
-			// 1) Название (большим текстом)
-			// Можно ещё сделать "###" чтобы выглядело крупнее
 			container.components.push({
 				type: V2.TextDisplay,
 				content: org.isFreeze ? `## ❄️ ${org.name}` : `## ${org.name}`,
 			});
 
-			// 2) Ровно один ряд из 3 кнопок
 			container.components.push({
 				type: 1, // ActionRow
 				components: [
 					{
-						type: 2, // Button
-						style: 2, // Secondary
+						type: 2,
+						style: 2,
 						label: "Редактировать",
 						custom_id: FAMILY_PANEL.customId.edit(org.id),
 					},
 					{
 						type: 2,
-						style: org.isFreeze ? 3 : 2, // Success если разморозить, иначе Secondary
+						style: org.isFreeze ? 3 : 2,
 						label: org.isFreeze ? "Разморозить" : "Заморозить",
 						custom_id: FAMILY_PANEL.customId.freeze(org.id),
 					},
 					{
 						type: 2,
-						style: 4, // Danger
+						style: 4,
 						label: "Удалить",
 						custom_id: FAMILY_PANEL.customId.del(org.id),
 					},
@@ -123,18 +118,15 @@ async function getFamilyForum(client: Client): Promise<ForumChannel | null> {
 }
 
 async function ensureThread(forum: ForumChannel, storedChannelId?: string) {
-	// 1) если записан threadId — используем
 	if (storedChannelId) {
 		const existing = await forum.client.channels.fetch(storedChannelId).catch(() => null);
 		if (existing && existing.isThread()) return existing as ThreadChannel;
 	}
 
-	// 2) ищем среди активных тредов
 	const active = await forum.threads.fetchActive().catch(() => null);
 	const foundActive = active?.threads?.find((t) => t.name === FAMILY_PANEL.THREAD_NAME);
 	if (foundActive) return foundActive as ThreadChannel;
 
-	// 3) создаём новый
 	return await forum.threads.create({
 		name: FAMILY_PANEL.THREAD_NAME,
 		message: { content: "Служебный тред панели семей." },
@@ -153,7 +145,6 @@ export async function upsertFamilyListPanel(client: Client) {
 
 	const thread = await ensureThread(forum, stored?.channelId);
 
-	// сортировка: isFreeze=false сверху, true снизу
 	const orgs = await prisma.organisation.findMany({
 		where: { type: "FAMILY" },
 		orderBy: [{ isFreeze: "asc" }, { id: "asc" }],
@@ -173,6 +164,7 @@ export async function upsertFamilyListPanel(client: Client) {
 		}
 	}
 
+	// ✅ Теперь components ВСЕГДА не пустые
 	const sent = await thread.send({
 		flags: MessageFlags.IsComponentsV2,
 		components: components as any,

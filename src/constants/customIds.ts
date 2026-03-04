@@ -82,5 +82,6 @@ export const CUSTOM_COMMAND = {
 	UNMUTE: "unmute",
 	DB_HIVE_STATS: "hive-stats",
 	FEE_ADD: "fee_add",
+	FEE_REMOVE: "fee_remove",
 	FEE_PANEL: "fee_panel",
 }

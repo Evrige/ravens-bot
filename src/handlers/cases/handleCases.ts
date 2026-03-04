@@ -8,6 +8,8 @@
 //
 // ВАЖНО: кнопка "Сформировать кейс" у тебя имеет customId: `${CUSTOM_IDS.CREATE_CASE}${org.id}`
 // Этот файл парсит orgId именно так.
+//
+// ✅ Изменение: кейс можно формировать с ЛЮБЫМ кол-вом улик (1..11). Не требуем ровно 11.
 
 import {
 	ActionRowBuilder,
@@ -24,8 +26,8 @@ import {
 } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import { CUSTOM_IDS } from "../../constants/customIds";
-import {createCaseDocument} from "../../services/googleDocs";
-import {resetHivePanel} from "../../services/upsertHivePanel";
+import { createCaseDocument } from "../../services/googleDocs";
+import { resetHivePanel } from "../../services/upsertHivePanel";
 
 /* ===================== IDS ===================== */
 
@@ -58,7 +60,7 @@ function buildCaseEmbed(params: {
 
 	const embed = new EmbedBuilder()
 		.setTitle(`📁 Кейс #${params.caseNumber}`)
-		.setDescription(lines.join("\n"))
+		.setDescription(lines.length ? lines.join("\n") : "Улик нет.")
 		.setTimestamp();
 
 	const statusText = params.status === "ACCEPTED" ? "Принят ✅" : "Ожидает ⏳";
@@ -98,7 +100,10 @@ function buildCaseComponents(params: {
 	// 1) основные кнопки
 	rows.push(
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
-			new ButtonBuilder().setCustomId(CASE_IDS.replace(params.caseId)).setStyle(ButtonStyle.Secondary).setLabel("Заменить улику"),
+			new ButtonBuilder()
+				.setCustomId(CASE_IDS.replace(params.caseId))
+				.setStyle(ButtonStyle.Secondary)
+				.setLabel("Заменить улику"),
 			new ButtonBuilder().setCustomId(CASE_IDS.accept(params.caseId)).setStyle(ButtonStyle.Success).setLabel("Принять"),
 		),
 	);
@@ -116,12 +121,7 @@ function buildCaseComponents(params: {
 	}
 
 	if (params.docUrl) {
-		docRow.addComponents(
-			new ButtonBuilder()
-				.setStyle(ButtonStyle.Link)
-				.setLabel("📄 Google Doc")
-				.setURL(params.docUrl),
-		);
+		docRow.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("📄 Google Doc").setURL(params.docUrl));
 	}
 
 	if (docRow.components.length) rows.push(docRow);
@@ -129,7 +129,7 @@ function buildCaseComponents(params: {
 	return rows;
 }
 
-/* ===================== SELECT 11 HIVES ===================== */
+/* ===================== SELECT HIVES (ANY COUNT UP TO 11) ===================== */
 
 type HiveWithForm = {
 	id: bigint;
@@ -139,17 +139,11 @@ type HiveWithForm = {
 };
 
 function selectHivesForCase(hives: HiveWithForm[]) {
+	// Берём по “квотам”, но НЕ требуем добить до 11.
+	// Итог: сколько получилось (1..11), максимум 11.
 	const halves = hives.filter((h) => h.form === "ONE_HALF").slice(0, 2);
 	const quarters = hives.filter((h) => h.form === "ONE_QUARTER").slice(0, 4);
-	let fifths = hives.filter((h) => h.form === "ONE_FIFTH").slice(0, 5);
-
-	if (fifths.length < 5) {
-		const needed = 5 - fifths.length;
-		const extraQuarters = hives
-			.filter((h) => h.form === "ONE_QUARTER")
-			.slice(4, 4 + needed);
-		fifths = [...fifths, ...extraQuarters];
-	}
+	const fifths = hives.filter((h) => h.form === "ONE_FIFTH").slice(0, 5);
 
 	return [...halves, ...quarters, ...fifths].slice(0, 11);
 }
@@ -198,9 +192,7 @@ export async function handleCreateCaseButton(interaction: ButtonInteraction) {
 	if (!orgId) return false;
 
 	// showModal (нельзя deferReply перед showModal)
-	const modal = new ModalBuilder()
-		.setCustomId(CASE_IDS.createModal(orgId))
-		.setTitle("Сформировать кейс");
+	const modal = new ModalBuilder().setCustomId(CASE_IDS.createModal(orgId)).setTitle("Сформировать кейс");
 
 	const numInput = new TextInputBuilder()
 		.setCustomId("caseNumber")
@@ -266,8 +258,10 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 	}
 
 	const selected = selectHivesForCase(org.hives as unknown as HiveWithForm[]);
-	if (selected.length < 11) {
-		await interaction.editReply(`❌ Недостаточно улик: нужно 11, доступно ${selected.length}.`);
+
+	// ✅ теперь можно любое кол-во, но хотя бы 1 улика нужна
+	if (selected.length === 0) {
+		await interaction.editReply("❌ Нет доступных улик для формирования кейса.");
 		return true;
 	}
 
@@ -292,24 +286,26 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 		return true;
 	}
 
-	// 3) создаём Google Doc СРАЗУ по выбранным 11 уликам
+	// 3) создаём Google Doc по выбранным уликам (если есть)
 	const hiveIds = selected.map((h) => h.id);
 
 	let docUrl: string | null = null;
 	let docId: string | null = null;
 
-	try {
-		const doc = await createCaseDocument({
-			orgId,
-			caseNumber,
-			hiveIds, // ⚠️ createCaseDocument должен поддерживать hiveIds (см. мои правки)
-		} as any);
+	if (hiveIds.length) {
+		try {
+			const doc = await createCaseDocument({
+				orgId,
+				caseNumber,
+				hiveIds, // ⚠️ createCaseDocument должен поддерживать hiveIds
+			} as any);
 
-		docUrl = doc?.url ?? null;
-		docId = doc?.docId ?? null;
-	} catch (e: any) {
-		// если док не создался — кейс всё равно есть; просто без ссылки
-		console.error("[case] createCaseDocument failed:", e?.message ?? e);
+			docUrl = doc?.url ?? null;
+			docId = doc?.docId ?? null;
+		} catch (e: any) {
+			// если док не создался — кейс всё равно есть; просто без ссылки
+			console.error("[case] createCaseDocument failed:", e?.message ?? e);
+		}
 	}
 
 	// сохраним ссылку (если есть)
@@ -345,7 +341,7 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 		data: { channelId: msg.channelId, messageId: msg.id },
 	});
 
-	await interaction.editReply("✅ Кейс сформирован и опубликован.");
+	await interaction.editReply(`✅ Кейс сформирован и опубликован. Улик: **${selected.length}**.`);
 	return true;
 }
 
@@ -376,8 +372,12 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 			return true;
 		}
 
-		// пересоздавать логично только пока не принят (но ты не запрещал)
 		const hiveIds = c.caseHives.map((x) => x.Hive.id);
+
+		if (!hiveIds.length) {
+			await interaction.editReply("❌ В кейсе нет улик — документ не из чего формировать.");
+			return true;
+		}
 
 		let docUrl: string | null = null;
 		let docId: string | null = null;
@@ -404,10 +404,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 		// обновим сообщение кейса
 		if (c.channelId && c.messageId) {
 			const ch = await interaction.client.channels.fetch(c.channelId).catch(() => null);
-			const msg =
-				ch && ch.isTextBased()
-					? await ch.messages.fetch(c.messageId).catch(() => null)
-					: null;
+			const msg = ch && ch.isTextBased() ? await ch.messages.fetch(c.messageId).catch(() => null) : null;
 
 			if (msg) {
 				const hives = c.caseHives.map((x) => x.Hive);
@@ -418,15 +415,17 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 					status: (c.status as any) === "ACCEPTED" ? "ACCEPTED" : "PENDING",
 				});
 
-				await msg.edit({
-					embeds: [embed],
-					components: buildCaseComponents({
-						caseId: recreateCaseId,
-						docUrl,
-						showRecreate: false, // после пересоздания можно спрятать
-						accepted: (c.status as any) === "ACCEPTED",
-					}),
-				}).catch(() => {});
+				await msg
+					.edit({
+						embeds: [embed],
+						components: buildCaseComponents({
+							caseId: recreateCaseId,
+							docUrl,
+							showRecreate: false, // после пересоздания можно спрятать
+							accepted: (c.status as any) === "ACCEPTED",
+						}),
+					})
+					.catch(() => {});
 			}
 		}
 
@@ -442,9 +441,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 
 	// REPLACE -> showModal (без deferReply)
 	if (parsed.action === "replace") {
-		const modal = new ModalBuilder()
-			.setCustomId(CASE_IDS.replaceModal(parsed.caseId))
-			.setTitle("Заменить улику в кейсе");
+		const modal = new ModalBuilder().setCustomId(CASE_IDS.replaceModal(parsed.caseId)).setTitle("Заменить улику в кейсе");
 
 		const oldId = new TextInputBuilder()
 			.setCustomId("oldHiveId")
@@ -458,10 +455,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 			.setStyle(TextInputStyle.Short)
 			.setRequired(true);
 
-		modal.addComponents(
-			new ActionRowBuilder<TextInputBuilder>().addComponents(oldId),
-			new ActionRowBuilder<TextInputBuilder>().addComponents(newId),
-		);
+		modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(oldId), new ActionRowBuilder<TextInputBuilder>().addComponents(newId));
 
 		await interaction.showModal(modal);
 		return true;
@@ -487,10 +481,12 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 	const hiveIds = c.caseHives.map((x) => x.hiveId);
 
 	await prisma.$transaction(async (tx) => {
-		await tx.hive.updateMany({
-			where: { id: { in: hiveIds } },
-			data: { isUsed: true },
-		});
+		if (hiveIds.length) {
+			await tx.hive.updateMany({
+				where: { id: { in: hiveIds } },
+				data: { isUsed: true },
+			});
+		}
 
 		await tx.case.update({
 			where: { id: parsed.caseId },
@@ -514,10 +510,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 
 	if (updated?.channelId && updated.messageId) {
 		const ch = await interaction.client.channels.fetch(updated.channelId).catch(() => null);
-		const msg =
-			ch && ch.isTextBased()
-				? await ch.messages.fetch(updated.messageId).catch(() => null)
-				: null;
+		const msg = ch && ch.isTextBased() ? await ch.messages.fetch(updated.messageId).catch(() => null) : null;
 
 		if (msg) {
 			const hives = updated.caseHives.map((x) => x.Hive);
@@ -528,14 +521,16 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 				status: "ACCEPTED",
 			});
 
-			await msg.edit({
-				embeds: [embed],
-				components: buildCaseComponents({
-					caseId: parsed.caseId,
-					docUrl: updated.docUrl ?? null,
-					accepted: true,
-				}),
-			}).catch(() => {});
+			await msg
+				.edit({
+					embeds: [embed],
+					components: buildCaseComponents({
+						caseId: parsed.caseId,
+						docUrl: updated.docUrl ?? null,
+						accepted: true,
+					}),
+				})
+				.catch(() => {});
 		}
 	}
 
@@ -617,7 +612,7 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 	const oldEntry = c.caseHives.find((x) => x.hiveId.toString() === oldHiveId.toString());
 	const oldForm = String(oldEntry?.Hive?.form || "");
 
-// нормализуем в ONE_*
+	// нормализуем в ONE_*
 	const normForm = (f: string) => {
 		if (f === "1/2") return "ONE_HALF";
 		if (f === "1/4") return "ONE_QUARTER";
@@ -627,7 +622,7 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 
 	const oldFormNorm = normForm(oldForm);
 
-// 2) загрузим новую улику с org + form
+	// 2) загрузим новую улику с org + form
 	const newHive = await prisma.hive.findUnique({
 		where: { id: newHiveId },
 		select: { id: true, status: true, isUsed: true, organisationId: true, form: true },
@@ -638,19 +633,19 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		return true;
 	}
 
-// 3) проверка организации
+	// 3) проверка организации
 	if (newHive.organisationId.toString() !== c.orgId.toString()) {
 		await interaction.editReply("❌ Новая улика должна быть из этой же организации.");
 		return true;
 	}
 
-// 4) проверка формы
+	// 4) проверка формы
 	const newFormNorm = normForm(String(newHive.form || ""));
 
-// правила:
-// old 1/2 -> new только 1/2
-// old 1/4 -> new только 1/4
-// old 1/5 -> new 1/5 ИЛИ 1/4
+	// правила:
+	// old 1/2 -> new только 1/2
+	// old 1/4 -> new только 1/4
+	// old 1/5 -> new 1/5 ИЛИ 1/4
 	const allowed =
 		oldFormNorm === "ONE_HALF"
 			? ["ONE_HALF"]
@@ -662,10 +657,10 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 
 	if (!allowed.includes(newFormNorm)) {
 		const oldLabel = oldFormNorm === "ONE_HALF" ? "1/2" : oldFormNorm === "ONE_QUARTER" ? "1/4" : "1/5";
-		const allowedLabel =
-			oldFormNorm === "ONE_FIFTH" ? "1/5 или 1/4" : oldLabel;
+		const newLabel = newFormNorm === "ONE_HALF" ? "1/2" : newFormNorm === "ONE_QUARTER" ? "1/4" : "1/5";
+		const allowedLabel = oldFormNorm === "ONE_FIFTH" ? "1/5 или 1/4" : oldLabel;
 
-		await interaction.editReply(`❌ Нельзя заменить улику формы **${oldLabel}** на **${newFormNorm === "ONE_HALF" ? "1/2" : newFormNorm === "ONE_QUARTER" ? "1/4" : "1/5"}**. Нужно: **${allowedLabel}**.`);
+		await interaction.editReply(`❌ Нельзя заменить улику формы **${oldLabel}** на **${newLabel}**. Нужно: **${allowedLabel}**.`);
 		return true;
 	}
 
@@ -693,10 +688,7 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 
 	if (updated?.channelId && updated.messageId) {
 		const ch = await interaction.client.channels.fetch(updated.channelId).catch(() => null);
-		const msg =
-			ch && ch.isTextBased()
-				? await ch.messages.fetch(updated.messageId).catch(() => null)
-				: null;
+		const msg = ch && ch.isTextBased() ? await ch.messages.fetch(updated.messageId).catch(() => null) : null;
 
 		if (msg) {
 			const hives = updated.caseHives.map((x) => x.Hive);
@@ -707,15 +699,17 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 				status: "PENDING",
 			});
 
-			await msg.edit({
-				embeds: [embed],
-				components: buildCaseComponents({
-					caseId,
-					docUrl: updated.docUrl ?? null,
-					showRecreate: true, // ✅ появляется после замены
-					accepted: false,
-				}),
-			}).catch(() => {});
+			await msg
+				.edit({
+					embeds: [embed],
+					components: buildCaseComponents({
+						caseId,
+						docUrl: updated.docUrl ?? null,
+						showRecreate: true, // ✅ появляется после замены
+						accepted: false,
+					}),
+				})
+				.catch(() => {});
 		}
 	}
 
