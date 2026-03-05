@@ -13,39 +13,34 @@ import { IDS } from "./ids";
 export function buildPanelEmbed() {
 	return new EmbedBuilder()
 		.setTitle("TempVoice Interface")
-		.setDescription(
-			"This interface can be used to manage temporary voice channels.\n" +
-			"More options are available with /voice commands.\n\n" +
-			"Press the buttons below to use the interface."
-		);
 }
 
 export function buildPanelComponents() {
 	const S = ButtonStyle.Secondary;
 
 	const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-		new ButtonBuilder().setCustomId(IDS.BTN_NAME).setLabel("NAME").setEmoji("🏷️").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_LIMIT).setLabel("LIMIT").setEmoji("👥").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_PRIVACY).setLabel("PRIVACY").setEmoji("🛡️").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_WAIT).setLabel("WAITING R.").setEmoji("🕒").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_CHAT).setLabel("CHAT").setEmoji("💬").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_NAME).setLabel("НАЗВАНИЕ").setEmoji("🏷️").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_LIMIT).setLabel("ЛИМИТ").setEmoji("👥").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_PRIVACY).setLabel("ПРИВАТНОСТЬ").setEmoji("🛡️").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_WAIT).setLabel("ОЖИДАНИЕ").setEmoji("🕒").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_CHAT).setLabel("ЧАТ").setEmoji("💬").setStyle(S),
 	);
 
 	const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-		new ButtonBuilder().setCustomId(IDS.BTN_TRUST).setLabel("TRUST").setEmoji("✅").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_UNTRUST).setLabel("UNTRUST").setEmoji("🚫").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_INVITE).setLabel("INVITE").setEmoji("✉️").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_KICK).setLabel("KICK").setEmoji("👢").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_REGION).setLabel("REGION").setEmoji("🌍").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_TRUST).setLabel("ДОБАВИТЬ").setEmoji("✅").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_UNTRUST).setLabel("УБРАТЬ").setEmoji("🚫").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_INVITE).setLabel("ПРИГЛАСИТЬ").setEmoji("✉️").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_KICK).setLabel("КИК").setEmoji("👢").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_REGION).setLabel("РЕГИОН").setEmoji("🌍").setStyle(S),
 	);
 
 	const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-		new ButtonBuilder().setCustomId(IDS.BTN_BLOCK).setLabel("BLOCK").setEmoji("⛔").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_UNBLOCK).setLabel("UNBLOCK").setEmoji("🔓").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_CLAIM).setLabel("CLAIM").setEmoji("👑").setStyle(S),
-		new ButtonBuilder().setCustomId(IDS.BTN_TRANSFER).setLabel("TRANSFER").setEmoji("🔁").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_BLOCK).setLabel("БЛОК").setEmoji("⛔").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_UNBLOCK).setLabel("РАЗБЛОК").setEmoji("🔓").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_CLAIM).setLabel("ЛИДЕРКА").setEmoji("👑").setStyle(S),
+		new ButtonBuilder().setCustomId(IDS.BTN_TRANSFER).setLabel("ПЕРЕДАТЬ").setEmoji("🔁").setStyle(S),
 		// Хочешь вообще без цветов — поставь Secondary вместо Danger
-		new ButtonBuilder().setCustomId(IDS.BTN_DELETE).setLabel("DELETE").setEmoji("🗑️").setStyle(ButtonStyle.Danger),
+		new ButtonBuilder().setCustomId(IDS.BTN_DELETE).setLabel("УДАЛИТЬ").setEmoji("🗑️").setStyle(ButtonStyle.Danger),
 	);
 
 	return [row1, row2, row3];

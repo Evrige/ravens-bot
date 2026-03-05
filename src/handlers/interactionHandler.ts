@@ -1,4 +1,4 @@
-import { Interaction } from "discord.js";
+import {Interaction, MessageFlags} from "discord.js";
 import "dotenv/config";
 import { CUSTOM_COMMAND } from "../constants/customIds";
 
@@ -40,6 +40,8 @@ import {handleWeeklyFeeUI} from "./handleWeeklyFeeUI";
 import {weeklyFeeAddCommand} from "../commands/ravens-family/weekly-fee-add";
 import {weeklyFeePanelCommand} from "../commands/ravens-family/weekly-fee-panel";
 import {weeklyFeeRemoveCommand} from "../commands/ravens-family/weekly-fee-remove";
+import {familyPanelReset} from "../commands/detectives/familyPanelReset";
+import {parseFamilyListPageCustomId, renderFamilyListPage} from "../services/upsertFamilyListPanel";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -69,6 +71,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.FEE_PANEL]: weeklyFeePanelCommand,
 	[CUSTOM_COMMAND.FEE_PANEL]: weeklyFeePanelCommand,
 	[CUSTOM_COMMAND.FEE_REMOVE]: weeklyFeeRemoveCommand,
+	[CUSTOM_COMMAND.FAMILY_PANEL]: familyPanelReset,
 };
 
 // ================== Обработчик интеракций ==================
@@ -86,13 +89,21 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		if (interaction.isButton()) {
-			await handleCreateCaseButton(interaction)
-			await handleCaseButtons(interaction)
-			await handleDBButtons(interaction);
+			// 1) showModal -> сразу стоп
+			if (await handleCreateCaseButton(interaction)) return;
+
+			// 2) family list panel
+			if (await handleFamilyListPanelButtons(interaction)) return;
+
+			// 3) db buttons (НАДО чтобы он возвращал boolean)
+			if (await handleDBButtons(interaction)) return;
+
+			// 4) остальное (пока можно оставить как было, но лучше тоже перевести на boolean)
+			await handleCaseButtons(interaction);
 			await handleFamilyButtons(interaction);
 			await handleMarketButtons(interaction);
-			await handleFamilyListPanelButtons(interaction);
 			await handleWeeklyFeeUI(interaction);
+
 			if (interaction.customId.startsWith("staff_toggle:")) {
 				const handled = await handleStaffListToggle(client, interaction);
 				if (handled) return;

@@ -16,7 +16,7 @@ export const familyCommand = {
 			interaction,
 			CUSTOM_IDS.OPEN_FAMILY_APPLICATION,
 			"ПОДАТЬ ЗАЯВКУ",
-			"https://cdn.pixabay.com/photo/2021/12/12/20/00/play-6865967_1280.jpg"
+			"./assets/ravens-logo.png"
 		);
 	}
 };

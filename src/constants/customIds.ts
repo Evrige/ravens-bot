@@ -81,7 +81,8 @@ export const CUSTOM_COMMAND = {
 	UNBAN: "unban",
 	UNMUTE: "unmute",
 	DB_HIVE_STATS: "hive-stats",
-	FEE_ADD: "fee_add",
-	FEE_REMOVE: "fee_remove",
-	FEE_PANEL: "fee_panel",
+	FEE_ADD: "fee-add",
+	FEE_REMOVE: "fee-remove",
+	FEE_PANEL: "fee-panel",
+	FAMILY_PANEL: "family-panel-reset",
 }
