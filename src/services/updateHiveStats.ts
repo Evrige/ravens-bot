@@ -1,6 +1,7 @@
 import { Client, TextChannel, MessageFlags } from "discord.js";
 import { prisma } from "../utils/prisma";
-import {config} from "../config/env";
+import { config } from "../config/env";
+import { HiveStatus } from "../generated/prisma/client";
 
 const V2 = { Container: 17, TextDisplay: 10, Separator: 14 } as const;
 
@@ -14,7 +15,7 @@ function buildHiveStatsV2(lines: string[]) {
 	const container: any = {
 		type: V2.Container,
 		components: [
-			{ type: V2.TextDisplay, content: "## 📊 Статистика улик:" },
+			{ type: V2.TextDisplay, content: "## 📊 Статистика принятых улик:" },
 			{ type: V2.Separator }
 		]
 	};
@@ -22,13 +23,16 @@ function buildHiveStatsV2(lines: string[]) {
 	if (!lines.length) {
 		container.components.push({
 			type: V2.TextDisplay,
-			content: "Нет активных агентов за последние 14 дней."
+			content: "Нет активных агентов с принятыми уликами за последние 14 дней."
 		});
 		return container;
 	}
 
 	for (const part of chunkLines(lines)) {
-		container.components.push({ type: V2.TextDisplay, content: part.join("\n") });
+		container.components.push({
+			type: V2.TextDisplay,
+			content: part.join("\n")
+		});
 		container.components.push({ type: V2.Separator });
 	}
 
@@ -56,9 +60,11 @@ export async function updateHiveStats(
 	channel?: TextChannel,
 	forceRepost = false
 ) {
-	// ✅ если канал не передали — берём из БД (как авто-апдейтер)
+	// если канал не передали — берём из БД
 	if (!channel) {
-		const botMsg = await prisma.botMessage.findUnique({ where: { type: "hive_stats" } });
+		const botMsg = await prisma.botMessage.findUnique({
+			where: { type: "hive_stats" }
+		});
 		if (!botMsg) return;
 
 		const ch = await client.channels.fetch(botMsg.channelId).catch(() => null);
@@ -71,43 +77,101 @@ export async function updateHiveStats(
 
 	await guild.members.fetch().catch(() => {});
 
-	const agentMembers = guild.members.cache.filter(m =>
-		m.roles.cache.some(r => config.DB_AGENT_ROLE_IDS.includes(r.id))
+	const agentMembers = guild.members.cache.filter((m) =>
+		m.roles.cache.some((r) => config.DB_AGENT_ROLE_IDS.includes(r.id))
 	);
 
 	const agentIds = [...agentMembers.keys()];
+
+	if (!agentIds.length) {
+		const container = buildHiveStatsV2([]);
+		const payloadSend: any = {
+			flags: MessageFlags.IsComponentsV2,
+			components: [container]
+		};
+
+		const payloadEdit: any = {
+			components: [container]
+		};
+
+		const botMsg = await prisma.botMessage.findUnique({
+			where: { type: "hive_stats" }
+		});
+
+		if (botMsg && botMsg.channelId === channel.id) {
+			try {
+				const msg = await channel.messages.fetch(botMsg.messageId);
+				await msg.edit(payloadEdit);
+				return;
+			} catch (err: any) {
+				if (err?.code !== 10008) {
+					console.warn("hiveStats edit failed, recreating:", err);
+				}
+			}
+		}
+
+		const newMsg = await channel.send(payloadSend);
+
+		if (botMsg) {
+			await prisma.botMessage.update({
+				where: { type: "hive_stats" },
+				data: { messageId: newMsg.id, channelId: channel.id }
+			});
+		} else {
+			await prisma.botMessage.create({
+				data: { type: "hive_stats", messageId: newMsg.id, channelId: channel.id }
+			});
+		}
+		return;
+	}
 
 	const now = new Date();
 	const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 	const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
+	// Всего принятых улик по агентам
 	const totals = await prisma.hive.groupBy({
 		by: ["userId"],
-		where: { userId: { in: agentIds } },
+		where: {
+			userId: { in: agentIds },
+			status: HiveStatus.ACCEPTED
+		},
 		_count: { _all: true },
 		_max: { createdAt: true }
 	});
 
+	// Принятые улики за неделю
 	const weeks = await prisma.hive.groupBy({
 		by: ["userId"],
-		where: { userId: { in: agentIds }, createdAt: { gte: weekAgo } },
+		where: {
+			userId: { in: agentIds },
+			status: HiveStatus.ACCEPTED,
+			createdAt: { gte: weekAgo }
+		},
 		_count: { _all: true }
 	});
 
 	const weekMap = new Map<string, number>();
-	for (const w of weeks) weekMap.set(w.userId, w._count._all);
+	for (const w of weeks) {
+		weekMap.set(w.userId, w._count._all);
+	}
 
 	const rows = totals
-		.map(t => ({
+		.map((t) => ({
 			userId: t.userId,
-			total: t._count._all,
-			week: weekMap.get(t.userId) ?? 0,
-			last: t._max.createdAt
+			totalAccepted: t._count._all,
+			weekAccepted: weekMap.get(t.userId) ?? 0,
+			lastAcceptedAt: t._max.createdAt
 		}))
-		.filter(r => r.last && r.last >= twoWeeksAgo)
-		.sort((a, b) => (b.week - a.week) || (b.total - a.total));
+		.filter((r) => r.lastAcceptedAt && r.lastAcceptedAt >= twoWeeksAgo)
+		.sort((a, b) => {
+			return (b.weekAccepted - a.weekAccepted) || (b.totalAccepted - a.totalAccepted);
+		});
 
-	const lines = rows.map(r => `<@${r.userId}>: Всего **${r.total}** • За неделю: **${r.week}**`);
+	const lines = rows.map(
+		(r) =>
+			`<@${r.userId}>: Всего принятых **${r.totalAccepted}** • За неделю: **${r.weekAccepted}**`
+	);
 
 	const container = buildHiveStatsV2(lines);
 
@@ -120,9 +184,11 @@ export async function updateHiveStats(
 		components: [container]
 	};
 
-	const botMsg = await prisma.botMessage.findUnique({ where: { type: "hive_stats" } });
+	const botMsg = await prisma.botMessage.findUnique({
+		where: { type: "hive_stats" }
+	});
 
-	// ✅ форс-репост (обычно только из команды)
+	// форс-репост
 	if (forceRepost) {
 		if (botMsg && botMsg.channelId === channel.id) {
 			await safeDelete(channel, botMsg.messageId);
@@ -143,14 +209,16 @@ export async function updateHiveStats(
 		return;
 	}
 
-	// ✅ обычный режим: edit -> fallback recreate
+	// обычный режим: edit -> fallback recreate
 	if (botMsg && botMsg.channelId === channel.id) {
 		try {
 			const msg = await channel.messages.fetch(botMsg.messageId);
 			await msg.edit(payloadEdit);
 			return;
 		} catch (err: any) {
-			if (err?.code !== 10008) console.warn("hiveStats edit failed, recreating:", err);
+			if (err?.code !== 10008) {
+				console.warn("hiveStats edit failed, recreating:", err);
+			}
 		}
 	}
 

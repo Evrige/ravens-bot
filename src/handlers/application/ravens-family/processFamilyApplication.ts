@@ -1,8 +1,37 @@
-// processFamilyApplication.ts
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, TextChannel } from "discord.js";
+import { EmbedBuilder, Guild, MessageFlags, TextChannel } from "discord.js";
 import { prisma } from "../../../utils/prisma";
 import { FAMILY_USER_ROLE_IDS } from "../../../config/staff";
 import { config } from "../../../config/env";
+
+async function deleteUserTicketChannels(guild: Guild, username: string) {
+	const textChannel = guild.channels.cache.find((c: any) => c.name === `чат-${username}`);
+	const voiceChannel = guild.channels.cache.find((c: any) => c.name === `обзвон-${username}`);
+
+	if (textChannel) await textChannel.delete("Заявка обработана").catch(() => {});
+	if (voiceChannel) await voiceChannel.delete("Заявка обработана").catch(() => {});
+}
+
+async function safeInteractionResponse(interaction: any, content: string) {
+	try {
+		if (interaction.deferred) {
+			return await interaction.editReply({ content });
+		}
+
+		if (interaction.replied) {
+			return await interaction.followUp({
+				content,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+
+		return await interaction.reply({
+			content,
+			flags: MessageFlags.Ephemeral,
+		});
+	} catch (error) {
+		console.error("safeInteractionResponse error:", error);
+	}
+}
 
 export async function processFamilyApplication(
 	interaction: any,
@@ -12,77 +41,89 @@ export async function processFamilyApplication(
 	nicknameFromApplication?: string
 ) {
 	try {
-		const RecruitLogID = config.FAMILY_RECRUIT_LOG_ID;
+		const recruitLogId = config.FAMILY_RECRUIT_LOG_ID;
 		const moderator = interaction.user;
 
-		// Получаем конкретную заявку по уникальному ID
 		const application = await prisma.application.findUnique({
-			where: { id: applicationId }
+			where: { id: applicationId },
 		});
 
 		if (!application) {
-			console.error("Заявка не найдена в базе", applicationId);
-			if (!interaction.replied && !interaction.deferred) {
-				await interaction.reply({ content: "Заявка не найдена ❌", ephemeral: true });
-			}
+			await safeInteractionResponse(interaction, "Заявка не найдена ❌");
 			return;
 		}
 
-		// Обновляем заявку: recruitId только если принята
-		await prisma.application.update({
+		const updatedApplication = await prisma.application.update({
 			where: { id: applicationId },
 			data: {
 				isAccepted: accepted,
-				recruitId: moderator.id
-			}
+				recruitId: moderator.id,
+				reason: accepted ? null : reason,
+			},
 		});
 
-		// --- Логируем полную заявку
 		let resultEmbed: EmbedBuilder;
 
-// Если interaction.message есть (для кнопок)
-		if (interaction.message?.embeds[0]) {
-			// Копируем весь оригинальный embed
+		if (interaction.message?.embeds?.[0]) {
 			const originalEmbed = interaction.message.embeds[0].toJSON();
+
 			resultEmbed = EmbedBuilder.from(originalEmbed)
-				.setColor(accepted ? "Green" : "Red");
+				.setColor(accepted ? "Green" : "Red")
+				.addFields({
+					name: accepted ? "✅ Принял" : "❌ Отклонил",
+					value: `<@${moderator.id}>`,
+					inline: false,
+				});
 
-			// Добавляем поле с модератором
-			resultEmbed.addFields({
-				name: accepted ? "✅ Принял" : "❌ Отклонил",
-				value: `<@${moderator.id}>`,
-				inline: false
-			});
-
-			// Если отклонение, добавляем причину
 			if (!accepted && reason) {
 				resultEmbed.addFields({
 					name: "📌 Причина",
-					value: reason
+					value: reason,
+					inline: false,
 				});
 			}
 		} else {
-			// fallback на старый вариант, если interaction.message нет
 			resultEmbed = new EmbedBuilder()
-				.setTitle(`Заявка пользователя ${application.userId}`)
+				.setTitle("Решение по заявке")
 				.setColor(accepted ? "Green" : "Red")
-				.addFields({ name: accepted ? "✅ Принял" : "❌ Отклонил", value: `<@${moderator.id}>`, inline: true })
-				.setFooter({ text: "by Evri" })
+				.addFields(
+					{ name: "👤 Пользователь", value: `<@${updatedApplication.userId}>`, inline: false },
+					{ name: "🧑 Имя", value: updatedApplication.name, inline: true },
+					{ name: "🎂 Возраст", value: String(updatedApplication.age), inline: true },
+					{ name: "🎯 Цель", value: updatedApplication.target, inline: false },
+					{ name: "🔗 Ссылка", value: updatedApplication.link, inline: false },
+					{ name: "ℹ️ Узнал о нас", value: updatedApplication.howToKnow, inline: false },
+					{
+						name: accepted ? "✅ Принял" : "❌ Отклонил",
+						value: `<@${moderator.id}>`,
+						inline: false,
+					}
+				)
 				.setTimestamp();
 
 			if (!accepted && reason) {
-				resultEmbed.addFields({ name: "📌 Причина", value: reason });
+				resultEmbed.addFields({
+					name: "📌 Причина",
+					value: reason,
+					inline: false,
+				});
+			}
+
+			if (updatedApplication.callTakenById) {
+				resultEmbed.addFields({
+					name: "📞 Кто взял на обзвон",
+					value: `<@${updatedApplication.callTakenById}>`,
+					inline: false,
+				});
 			}
 		}
 
-		// --- Отправляем в лог-канал
-		const logChannel = interaction.guild.channels.cache.get(RecruitLogID) as TextChannel;
+		const logChannel = interaction.guild.channels.cache.get(recruitLogId) as TextChannel;
 		if (logChannel) {
 			await logChannel.send({ embeds: [resultEmbed] }).catch(console.error);
 		}
 
-		// --- ЛС пользователю
-		const authorUser = await interaction.client.users.fetch(application.userId).catch(() => null);
+		const authorUser = await interaction.client.users.fetch(updatedApplication.userId).catch(() => null);
 		if (authorUser) {
 			await authorUser.send(
 				accepted
@@ -91,32 +132,60 @@ export async function processFamilyApplication(
 			).catch(() => {});
 		}
 
-		// --- Выдаём роль на сервере если приняли
 		if (accepted) {
-			const member = await interaction.guild.members.fetch(application.userId).catch(() => null);
+			const member = await interaction.guild.members.fetch(updatedApplication.userId).catch(() => null);
 			if (member && FAMILY_USER_ROLE_IDS.length > 0) {
-				// Добавляем все роли из массива
 				await member.roles.add(FAMILY_USER_ROLE_IDS).catch(() => {});
 
-				// Устанавливаем никнейм, если передан
 				if (nicknameFromApplication) {
 					await member.setNickname(nicknameFromApplication).catch(() => {});
 				}
 			}
 		}
+		await safeInteractionResponse(
+			interaction,
+			accepted ? "Заявка принята ✅" : "Заявка отклонена ❌"
+		);
 
-		// --- Ответ модератору
-		if (!interaction.replied && !interaction.deferred) {
-			await interaction.reply({
-				content: accepted ? "Заявка принята ✅" : "Заявка отклонена ❌",
-				ephemeral: true
-			});
+		await deleteSourceMessageByUrl(interaction, updatedApplication.sourceMessageUrl);
+
+		if (
+			interaction.message?.id &&
+			interaction.message.url !== updatedApplication.sourceMessageUrl
+		) {
+			await interaction.message.delete().catch(() => {});
 		}
 
+		const member = await interaction.guild.members.fetch(updatedApplication.userId).catch(() => null);
+		const username = member?.user.username;
+		if (username) {
+			await deleteUserTicketChannels(interaction.guild, username);
+		}
 	} catch (err) {
 		console.error("Ошибка processFamilyApplication:", err);
-		if (!interaction.replied) {
-			await interaction.reply({ content: "Произошла ошибка ❌", ephemeral: true });
-		}
+		await safeInteractionResponse(interaction, "Произошла ошибка ❌");
+	}
+}
+
+async function deleteSourceMessageByUrl(interaction: any, messageUrl?: string | null) {
+	try {
+		if (!messageUrl) return;
+
+		const match = messageUrl.match(/\/channels\/(\d+)\/(\d+)\/(\d+)$/);
+		if (!match) return;
+
+		const [, guildId, channelId, messageId] = match;
+
+		if (interaction.guild?.id !== guildId) return;
+
+		const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+		if (!channel || !channel.isTextBased()) return;
+
+		const message = await channel.messages.fetch(messageId).catch(() => null);
+		if (!message) return;
+
+		await message.delete().catch(() => {});
+	} catch (error) {
+		console.error("deleteSourceMessageByUrl error:", error);
 	}
 }

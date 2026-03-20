@@ -1,4 +1,4 @@
-import { ModalSubmitInteraction, EmbedBuilder, Message } from "discord.js";
+import { ModalSubmitInteraction, EmbedBuilder, Message, MessageFlags, ChannelType } from "discord.js";
 import { prisma } from "../../../utils/prisma";
 import { CUSTOM_IDS } from "../../../constants/customIds";
 import { DB_STAFF_ROLE_IDS } from "../../../config/staff";
@@ -9,26 +9,53 @@ function hasStaffPerm(interaction: ModalSubmitInteraction) {
 	return member?.roles?.cache?.some((r: any) => DB_STAFF_ROLE_IDS.includes(r.id));
 }
 
+function isHiveApplicationMessage(message: Message, hiveIdStr?: string) {
+	return message.author.id &&
+		message.embeds.length > 0 &&
+		message.components.some((row: any) =>
+			row.components.some((btn: any) => {
+				const id = btn.customId || "";
+
+				if (hiveIdStr) {
+					return (
+						id === `${CUSTOM_IDS.ACCEPT}${hiveIdStr}` ||
+						id === `${CUSTOM_IDS.DECLINE}${hiveIdStr}` ||
+						id.startsWith(`${CUSTOM_IDS.CHANGE}${hiveIdStr}:`)
+					);
+				}
+
+				return (
+					id.startsWith(CUSTOM_IDS.ACCEPT) ||
+					id.startsWith(CUSTOM_IDS.DECLINE) ||
+					id.startsWith(CUSTOM_IDS.CHANGE)
+				);
+			})
+		);
+}
+
 export async function handleHiveDeclineReasonSubmit(interaction: ModalSubmitInteraction) {
-	// ловим только нашу модалку
 	if (!interaction.customId.startsWith(`${CUSTOM_IDS.HIVE_DECLINE_REASON}:`)) return;
 
 	if (!hasStaffPerm(interaction)) {
-		return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+		return interaction.reply({
+			content: "❌ У вас нет прав.",
+			flags: MessageFlags.Ephemeral,
+		});
 	}
 
-	await interaction.deferReply({ ephemeral: true }).catch(() => {});
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
 
 	const hiveIdStr = interaction.customId.split(":")[1];
 	const hiveId = BigInt(hiveIdStr);
 
 	const reasonRaw = interaction.fields.getTextInputValue(CUSTOM_IDS.REASON);
-	const reason = (reasonRaw || "").trim().slice(0, 1024); // на всякий
+	const reason = (reasonRaw || "").trim().slice(0, 1024);
 
 	const hive = await prisma.hive.findUnique({
 		where: { id: hiveId },
 		include: { organisation: true },
 	});
+
 	if (!hive) {
 		return interaction.editReply("❌ Улика не найдена.").catch(() => {});
 	}
@@ -36,35 +63,21 @@ export async function handleHiveDeclineReasonSubmit(interaction: ModalSubmitInte
 	await prisma.hive.update({
 		where: { id: hiveId },
 		data: { status: "REJECTED" },
-	});
+	}).catch(() => {});
 
-	// 1) Уведомление автору в ЛС (как было)
-	await interaction.client.users.fetch(hive.userId)
-		.then(u =>
-			u.send(
-				`❌ Ваша улика отклонена.\n` +
-				`**Организация:** ${hive.organisation?.name ?? "-"}\n` +
-				`**Причина:** ${reason || "-"}`
-			)
-		)
-		.catch(() => null);
-
-	// 2) Берём исходный embed заявки (из канала заявки)
-	// Модалка открывалась из сообщения в этом канале, но interaction.message у modal нет,
-	// поэтому ищем последнее сообщение бота с embed'ом "Улика"
-	let originalEmbed = null as any;
+	let originalEmbed: any = null;
+	let applicationMessage: Message | null = null;
 
 	const ch = interaction.channel;
 	if (ch?.isTextBased()) {
-		const messages = await ch.messages.fetch({ limit: 30 }).catch(() => null);
-		const appMsg = messages?.find((m: Message) =>
-			m.author.id === interaction.client.user?.id &&
-			m.embeds.length > 0
-		);
-		originalEmbed = appMsg?.embeds?.[0] ?? null;
+		const messages = await ch.messages.fetch({ limit: 50 }).catch(() => null);
+
+		applicationMessage =
+			messages?.find((m: Message) => isHiveApplicationMessage(m, hiveIdStr)) ?? null;
+
+		originalEmbed = applicationMessage?.embeds?.[0] ?? null;
 	}
 
-	// 3) Готовим embed для лога
 	const moderator = interaction.user;
 
 	const resultEmbed = originalEmbed
@@ -82,40 +95,32 @@ export async function handleHiveDeclineReasonSubmit(interaction: ModalSubmitInte
 			.addFields(
 				{ name: "Организация", value: hive.organisation?.name ?? "-", inline: true },
 				{ name: "❌ Отклонил", value: `<@${moderator.id}>`, inline: true },
-				{ name: "Причина", value: reason || "-", inline: false },
+				{ name: "Причина", value: reason || "-", inline: false }
 			)
 			.setFooter({ text: "by Evri" })
 			.setTimestamp();
 
-	// 4) Отправляем в лог БЕЗ кнопок
 	const logChannel = interaction.guild?.channels.cache.get(config.DB_LOG_CHANNEL_ID);
 	if (logChannel?.isTextBased()) {
 		await logChannel.send({ embeds: [resultEmbed] }).catch(() => {});
 	}
 
-	// 5) Ответ модеру
-	await interaction.editReply("❌ Отклонено. Отправлено в лог и автору (если ЛС открыты).").catch(() => {});
+	// удаляем только сообщение этой улики
+	if (applicationMessage) {
+		await applicationMessage.delete().catch(() => {});
+	}
 
-	// 6) Удаление/чистка как в accept (опционально)
-	if (ch?.isTextBased()) {
-		// удалим сообщения бота с embed'ами в этом канале (чтобы канал остался пустым)
-		const messages = await ch.messages.fetch({ limit: 50 }).catch(() => null);
-		if (messages) {
-			const botEmbeds = messages.filter((m: Message) =>
-				m.author.id === interaction.client.user?.id && m.embeds.length > 0
-			);
-			for (const m of botEmbeds.values()) {
-				await m.delete().catch(() => {});
-			}
-		}
+	// если других заявок в канале не осталось — удаляем канал
+	if (ch?.isTextBased() && ch.type === ChannelType.GuildText) {
+		const leftMessages = await ch.messages.fetch({ limit: 50 }).catch(() => null);
 
+		const hasOtherHiveMessages = leftMessages?.some((m: Message) => isHiveApplicationMessage(m)) ?? false;
 
-		// если канал пустой — удалить
-		const left = await ch.messages.fetch({ limit: 10 }).catch(() => null);
-		if (left && left.size === 0) {
+		if (!hasOtherHiveMessages) {
 			await (ch as any).delete().catch(() => {});
+			return;
 		}
 	}
 
-	return;
+	await interaction.editReply("❌ Отклонено. Отправлено в лог и автору (если ЛС открыты).").catch(() => {});
 }

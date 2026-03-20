@@ -7,8 +7,22 @@ import { hexToRuColorName } from "../utils/getColorToText";
 /* ===================== AUTH ===================== */
 
 function getOAuthClient() {
-	const oauth2Client = new google.auth.OAuth2(config.CLIENT_ID, config.CLIENT_SECRET);
-	oauth2Client.setCredentials({ refresh_token: config.REFRESH_TOKEN });
+	const clientId = config.GOOGLE_CLIENT_ID?.trim();
+	const clientSecret = config.GOOGLE_CLIENT_SECRET?.trim();
+	const redirectUri = config.GOOGLE_REDIRECT_URI?.trim();
+	const refreshToken = config.GOOGLE_REFRESH_TOKEN?.trim();
+
+	if (!clientId) throw new Error("GOOGLE_CLIENT_ID is not set");
+	if (!clientSecret) throw new Error("GOOGLE_CLIENT_SECRET is not set");
+	if (!redirectUri) throw new Error("GOOGLE_REDIRECT_URI is not set");
+	if (!refreshToken) throw new Error("GOOGLE_REFRESH_TOKEN is not set");
+
+	const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+
+	oauth2Client.setCredentials({
+		refresh_token: refreshToken,
+	});
+
 	return oauth2Client;
 }
 
@@ -35,13 +49,15 @@ function extractStartLine(text: string) {
 function buildStoryBody(text: string) {
 	const lines = (text || "").split("\n");
 	lines.shift();
+
 	if ((lines[0] || "").trim().match(/^0:00\s*-\s*Начало записи$/i)) {
 		lines.shift();
 	}
+
 	return lines.join("\n").trim();
 }
 
-/* ===================== SELECT 11 HIVES ===================== */
+/* ===================== SELECT HIVES ===================== */
 
 type HiveWithForm = {
 	story: string;
@@ -59,16 +75,11 @@ function selectHives(hives: HiveWithForm[]) {
 		const extraQuarters = hives
 			.filter((h) => h.form === "ONE_QUARTER")
 			.slice(4, 4 + needed);
+
 		fifths = [...fifths, ...extraQuarters];
 	}
 
 	return [...halves, ...quarters, ...fifths].slice(0, 11);
-}
-
-function formLabel(form: HiveWithForm["form"]) {
-	if (form === "ONE_HALF") return "1/2";
-	if (form === "ONE_QUARTER") return "1/4";
-	return "1/5";
 }
 
 /* ===================== BUILD BLOCK WITH MARKERS ===================== */
@@ -79,6 +90,7 @@ const SEP = "\n\n";
 function openTag(i: number) {
 	return `[[PROOF_${i}]]`;
 }
+
 function closeTag(i: number) {
 	return `[[/PROOF_${i}]]`;
 }
@@ -86,7 +98,6 @@ function closeTag(i: number) {
 function normalizeUrl(raw: string | null | undefined): string | null {
 	const u = (raw || "").trim();
 	if (!u) return null;
-
 	if (/^https?:\/\//i.test(u)) return u;
 	return `https://${u.replace(/^\/+/, "")}`;
 }
@@ -101,22 +112,16 @@ function buildHivesBlockAndLinks(hives: HiveWithForm[]) {
 			const part = index + 1;
 			const dt = extractStartLine(h.story) || "-";
 			const body = buildStoryBody(h.story) || "-";
-
 			const proofLine = `2. ${openTag(index)}${PROOF_WORD}${closeTag(index)}`;
 
-			return [
-				`Часть ${part}. `,
-				`1. ${dt}`,
-				proofLine,
-				`3. ${body}`,
-			].join("\n");
+			return [`Часть ${part}.`, `1. ${dt}`, proofLine, `3. ${body}`].join("\n");
 		})
 		.join(SEP);
 
 	return { block, linksInOrder };
 }
 
-/* ===================== DOC WALK (TABLE-SAFE) ===================== */
+/* ===================== DOC WALK ===================== */
 
 type Range = { startIndex: number; endIndex: number };
 
@@ -144,7 +149,6 @@ function walkStructuralElements(elements: any[], cb: (paragraph: any) => void) {
 
 		if (el.tableOfContents) {
 			walkStructuralElements(el.tableOfContents.content || [], cb);
-			continue;
 		}
 	}
 }
@@ -157,6 +161,7 @@ function paragraphToTextAndMap(paragraph: any) {
 	for (const el of elements) {
 		const content: string | undefined = el?.textRun?.content;
 		const startIndex: number | undefined = el?.startIndex;
+
 		if (typeof content !== "string" || typeof startIndex !== "number") continue;
 
 		for (let i = 0; i < content.length; i++) {
@@ -178,6 +183,7 @@ function docToFullTextAndMap(doc: any) {
 		for (const el of elements) {
 			const contentStr: string | undefined = el?.textRun?.content;
 			const startIndex: number | undefined = el?.startIndex;
+
 			if (typeof contentStr !== "string" || typeof startIndex !== "number") continue;
 
 			for (let i = 0; i < contentStr.length; i++) {
@@ -192,14 +198,18 @@ function docToFullTextAndMap(doc: any) {
 
 function getDocumentEndIndex(doc: any): number {
 	let maxEnd = 1;
+
 	const root = doc?.body?.content || [];
 	walkStructuralElements(root, (p) => {
 		const elements = p?.elements || [];
 		for (const el of elements) {
 			const endIndex: number | undefined = el?.endIndex;
-			if (typeof endIndex === "number" && endIndex > maxEnd) maxEnd = endIndex;
+			if (typeof endIndex === "number" && endIndex > maxEnd) {
+				maxEnd = endIndex;
+			}
 		}
 	});
+
 	return maxEnd;
 }
 
@@ -248,6 +258,7 @@ function findPartHeadingRanges(doc: any): Range[] {
 
 		const nl = text.indexOf("\n");
 		const endPos = nl >= 0 ? nl : text.length;
+
 		if (endPos <= 0 || endPos - 1 >= posToDocIndex.length) return;
 
 		ranges.push({
@@ -264,16 +275,14 @@ function findPartHeadingRanges(doc: any): Range[] {
 async function applyStylesAndLinks(
 	docsApi: any,
 	documentId: string,
-	linksInOrder: Array<string | null>
+	linksInOrder: Array<string | null>,
 ) {
 	const docRes = await docsApi.documents.get({ documentId });
 	const doc = docRes.data;
 
 	const endIndex = getDocumentEndIndex(doc);
-
 	const requests: any[] = [];
 
-	// 1) Georgia 14 по всему документу
 	requests.push({
 		updateTextStyle: {
 			range: { startIndex: 1, endIndex: Math.max(2, endIndex - 1) },
@@ -285,7 +294,6 @@ async function applyStylesAndLinks(
 		},
 	});
 
-	// 2) Bold для "Часть ..."
 	for (const r of findPartHeadingRanges(doc)) {
 		requests.push({
 			updateTextStyle: {
@@ -296,7 +304,6 @@ async function applyStylesAndLinks(
 		});
 	}
 
-	// 3) Link на "Доказательства" (по маркерам)
 	const proofRanges = findTaggedProofWordRanges(doc, linksInOrder.length);
 
 	for (let i = 0; i < proofRanges.length; i++) {
@@ -320,7 +327,6 @@ async function applyStylesAndLinks(
 		});
 	}
 
-	// 4) Cleanup маркеров
 	const cleanup: any[] = [];
 	for (let i = 0; i < linksInOrder.length; i++) {
 		cleanup.push(replaceText(openTag(i), ""));
@@ -338,8 +344,6 @@ async function applyStylesAndLinks(
 /* ===================== PERMISSIONS ===================== */
 
 async function setAnyoneWithLinkReader(driveApi: any, fileId: string) {
-	// Делает доступ: "Anyone with the link" -> "Viewer"
-	// ✅ supportsAllDrives на всякий случай (если папка/файл в shared drive)
 	await driveApi.permissions.create({
 		fileId,
 		requestBody: {
@@ -369,20 +373,23 @@ export async function createCaseDocument(params: {
 	if (!org) throw new Error("Организация не найдена");
 
 	const hives = await prisma.hive.findMany({
-		where: { id: { in: params.hiveIds } },
+		where: {
+			id: { in: params.hiveIds },
+			organisationId: params.orgId,
+		},
 		orderBy: { id: "asc" },
-		select: { story: true, link: true, form: true },
+		select: { id: true, story: true, link: true, form: true },
 	});
 
-	if (hives.length !== params.hiveIds.length) throw new Error("Часть улик не найдена");
+	if (hives.length !== params.hiveIds.length) {
+		throw new Error("Часть улик не найдена");
+	}
 
 	const { block: hivesBlock, linksInOrder } = buildHivesBlockAndLinks(hives as any);
 
-	// ✅ одно значение и в имени файла, и в {{CASE_NUMBER}}
 	const caseNumberStr = String(params.caseNumber).trim();
 	const docName = `SD | PHX №0${caseNumberStr}`;
 
-	// 1) копируем шаблон
 	const copy = await drive.files.copy({
 		fileId: config.GOOGLE_TEMPLATE_DOC_ID,
 		requestBody: {
@@ -393,18 +400,15 @@ export async function createCaseDocument(params: {
 		supportsAllDrives: true,
 	});
 
-	const docId = copy.data.id!;
+	const docId = copy.data.id;
 	if (!docId) throw new Error("Ошибка создания документа");
 
-	// ✅ 1.1) сразу выставляем права "доступ по ссылке"
 	try {
 		await setAnyoneWithLinkReader(drive, docId);
 	} catch (e: any) {
-		// Не валим создание кейса/дока, но логируем
 		console.error("[googleDocs] setAnyoneWithLinkReader failed:", e?.message ?? e);
 	}
 
-	// 2) replace placeholders
 	const requests: any[] = [];
 	requests.push(replaceText("{{CASE_NUMBER}}", `SD | PHX №0${caseNumberStr}`));
 	requests.push(replaceText("{{ORG_NAME}}", org.name));
@@ -418,7 +422,6 @@ export async function createCaseDocument(params: {
 		requestBody: { requests },
 	});
 
-	// 3) apply styles + links + cleanup markers
 	await applyStylesAndLinks(docs, docId, linksInOrder);
 
 	return {

@@ -42,6 +42,8 @@ import {weeklyFeePanelCommand} from "../commands/ravens-family/weekly-fee-panel"
 import {weeklyFeeRemoveCommand} from "../commands/ravens-family/weekly-fee-remove";
 import {familyPanelReset} from "../commands/detectives/familyPanelReset";
 import {parseFamilyListPageCustomId, renderFamilyListPage} from "../services/upsertFamilyListPanel";
+import {recruitCommand} from "../commands/ravens-family/recruit";
+import {hivePayoutCommand} from "../commands/detectives/hive-payout";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -72,6 +74,8 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.FEE_PANEL]: weeklyFeePanelCommand,
 	[CUSTOM_COMMAND.FEE_REMOVE]: weeklyFeeRemoveCommand,
 	[CUSTOM_COMMAND.FAMILY_PANEL]: familyPanelReset,
+	[CUSTOM_COMMAND.RECRUIT]: recruitCommand,
+	[CUSTOM_COMMAND.DB_HIVE_PAYOUT]: hivePayoutCommand,
 };
 
 // ================== Обработчик интеракций ==================

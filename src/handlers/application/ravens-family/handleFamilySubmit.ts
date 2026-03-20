@@ -1,4 +1,3 @@
-// handleFamilySubmit.ts
 import { CUSTOM_IDS } from "../../../constants/customIds";
 import { buildFamilyEmbedFromModal } from "../../../utils/buildFamilyEmbedFromModal";
 import { buildFamilyButtons } from "./handleFamilyButtons";
@@ -6,13 +5,10 @@ import { processFamilyApplication } from "./processFamilyApplication";
 import { config } from "../../../config/env";
 import { FAMILY_RECRUIT_ROLE_IDS } from "../../../config/staff";
 import { prisma, getOrCreateUser } from "../../../utils/prisma";
-import type { ModalSubmitInteraction } from "discord.js";
-import {Application} from "../../../generated/prisma/client";
+import {MessageFlags, ModalSubmitInteraction} from "discord.js";
+import { Application } from "../../../generated/prisma/client";
 
 export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
-	let application: Application | null = null;
-
-	// -------------------- СОЗДАНИЕ НОВОЙ ЗАЯВКИ -------------------- //
 	if (interaction.customId === CUSTOM_IDS.FAMILY_MODAL_NEW) {
 		const embed = buildFamilyEmbedFromModal(interaction);
 
@@ -20,112 +16,135 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 			CUSTOM_IDS.APPLICATION_FAMILY_AGE
 		).trim();
 
-		// Проверка: только цифры
 		if (!/^\d+$/.test(ageRaw)) {
 			return interaction.reply({
 				content: "❌ Возраст должен быть указан числом (например: 18).",
-				ephemeral: true
+				ephemeral: true,
 			});
 		}
-		const age = Number(ageRaw);
 
-		// Дополнительная проверка диапазона (по желанию)
+		const age = Number(ageRaw);
 		if (age < 14 || age > 100) {
 			return interaction.reply({
 				content: "❌ Укажите корректный возраст.",
-				ephemeral: true
+				ephemeral: true,
 			});
 		}
-		// Получаем или создаём пользователя
+
 		const user = await getOrCreateUser(interaction.user.id);
 
-		// Создаём запись в базе
-		application = await prisma.application.create({
+		// Историю получаем ДО создания новой заявки
+		const applicationHistory = await prisma.application.findMany({
+			where: { userId: user.id },
+			orderBy: { createdAt: "desc" },
+		});
+
+		const application = await prisma.application.create({
 			data: {
 				userId: user.id,
 				name: interaction.fields.getTextInputValue(CUSTOM_IDS.APPLICATION_FAMILY_NAME),
-				age: parseInt(interaction.fields.getTextInputValue(CUSTOM_IDS.APPLICATION_FAMILY_AGE)),
+				age,
 				target: interaction.fields.getTextInputValue(CUSTOM_IDS.APPLICATION_FAMILY_TARGET),
 				link: interaction.fields.getTextInputValue(CUSTOM_IDS.APPLICATION_FAMILY_LINK),
 				howToKnow: interaction.fields.getTextInputValue(CUSTOM_IDS.APPLICATION_FAMILY_HOW_TO_KNOW),
-			}
+			},
 		});
 
-		// Канал для заявок
 		const channelId = config.FAMILY_RECRUIT_CHANNEL_ID!;
 		const appChannel = interaction.guild?.channels.cache.get(channelId);
 
 		if (!appChannel?.isTextBased()) {
-			return interaction.reply({ content: "Канал для заявок не найден ❌", ephemeral: true });
+			return interaction.reply({
+				content: "Канал для заявок не найден ❌",
+				ephemeral: true,
+			});
 		}
 
-		// Генерируем кнопки с applicationId
 		const buttons = buildFamilyButtons(application.id);
+		const mentionText = FAMILY_RECRUIT_ROLE_IDS.map((id) => `<@&${id}>`).join(" ");
 
-		// Упоминания ролей
-		const mentionText = FAMILY_RECRUIT_ROLE_IDS.map(id => `<@&${id}>`).join(" ");
-
-		// Получаем историю заявок пользователя
-		const applicationHistory = await prisma.application.findMany({
-			where: { userId: user.id },
-			orderBy: { createdAt: 'desc' } // чтобы последние были сверху
-		});
-
-		let historyText = '';
+		let historyText = "";
 		if (applicationHistory.length > 0) {
-			historyText = applicationHistory.map((app: Application) => {
-				const statusEmoji = app.isAccepted ? '🟢' : '🔴';
-				const dateStr = app.createdAt.toLocaleDateString('ru-RU');
-				const reason = app.isAccepted ? '' : ` — Причина: ${app.reason || 'не указана'}`;
-				return `${statusEmoji} ${dateStr}${reason}`;
-			}).join('\n');
+			historyText = applicationHistory
+				.map((app: Application) => {
+					let statusEmoji = "🟡";
+					let statusText = "На рассмотрении";
+
+					if (app.isAccepted === true) {
+						statusEmoji = "🟢";
+						statusText = "Одобрена";
+					} else if (app.isAccepted === false && app.reason) {
+						statusEmoji = "🔴";
+						statusText = "Отклонена";
+					}
+
+					const dateStr = app.createdAt.toLocaleDateString("ru-RU");
+					const reasonText =
+						app.isAccepted === false ? ` — Причина: ${app.reason || "не указана"}` : "";
+
+					return `${statusEmoji} ${dateStr} — ${statusText}${reasonText}`;
+				})
+				.join("\n");
 		} else {
-			historyText = 'Старых заявок не найдено.';
+			historyText = "Старых заявок не найдено.";
 		}
 
-
-// Отправляем сначала текст истории, затем embed
-		await appChannel.send({
-			content: `${mentionText || ''}\n${historyText}`,
+		const sentMessage = await appChannel.send({
+			content: `${mentionText}\n\n**История заявок пользователя:**\n${historyText}`,
 			embeds: [embed],
 			components: [buttons]
 		});
 
-		return interaction.reply({ content: "✅ Ваша заявка отправлена, ожидайте.", ephemeral: true });
+		await prisma.application.update({
+			where: { id: application.id },
+			data: {
+				sourceMessageUrl: sentMessage.url,
+			},
+		});
+
+		return interaction.reply({
+			content: "✅ Ваша заявка отправлена, ожидайте.",
+			ephemeral: true,
+		});
 	}
 
-	// -------------------- ОТКЛОНЕНИЕ ЗАЯВКИ -------------------- //
 	if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_DECLINE_REASON_IN_FAMILY)) {
-		const reason = interaction.fields.getTextInputValue(CUSTOM_IDS.FAMILY_REASON_IN_FAMILY);
+		const reason = interaction.fields.getTextInputValue(CUSTOM_IDS.FAMILY_REASON_IN_FAMILY).trim();
 
-		// Разделяем applicationId и messageId
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
 		const data = interaction.customId.replace(CUSTOM_IDS.FAMILY_DECLINE_REASON_IN_FAMILY, "");
-		const [applicationId, messageId] = data.split("_");
-		if (!applicationId) {
-			return interaction.reply({ content: "Ошибка: ID заявки не найден ❌", ephemeral: true });
+		const [applicationIdRaw, messageId] = data.split("_");
+
+		if (!applicationIdRaw) {
+			return interaction.reply({
+				content: "Ошибка: ID заявки не найден ❌",
+				ephemeral: true,
+			});
 		}
 
-		// Находим заявку в базе
+		const applicationId = BigInt(applicationIdRaw);
+
 		const application = await prisma.application.findUnique({
-			where: { id: +applicationId }
+			where: { id: applicationId },
 		});
 
 		if (!application) {
-			return interaction.reply({ content: "Ошибка: заявка не найдена ❌", ephemeral: true });
+			return interaction.reply({
+				content: "Ошибка: заявка не найдена ❌",
+				ephemeral: true,
+			});
 		}
 
-		// Обновляем заявку в базе
 		await prisma.application.update({
-			where: { id: +applicationId },
-			data: { reason }
+			where: { id: applicationId },
+			data: { reason },
 		});
 
-		// Вызываем обработку заявки (отклонение)
 		await processFamilyApplication(interaction, application.id, false, reason);
 
-		// Удаляем оригинальное сообщение с кнопками
 		if (messageId) {
-			const message = await interaction.channel?.messages.fetch(messageId);
+			const message = await interaction.channel?.messages.fetch(messageId).catch(() => null);
 			await message?.delete().catch(() => {});
 		}
 

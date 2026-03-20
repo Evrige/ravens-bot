@@ -19,6 +19,7 @@ model User {
   isMute       Boolean       @default(false)
   xp           BigInt   @default(0)
   recruitApps  Application[] @relation("RecruitApplications")
+  callTakenApplications Application[] @relation("CallTakenApplications")
   applications Application[] @relation("UserApplications")
   roles        Role[]
   selling      Selling[]
@@ -76,6 +77,7 @@ model Hive {
   story          String
   isUsed Boolean @default(false)
   logUrl String?
+  isPaid Boolean @default(false)
   createdAt      DateTime     @default(now())
   status         HiveStatus   @default(PENDING)
   organisation   Organisation @relation(fields: [organisationId], references: [id])
@@ -85,7 +87,7 @@ model Hive {
 
 model Case {
   id         BigInt   @id @default(autoincrement())
-  caseNumber Int      @unique // или String если надо
+  caseNumber Int
   orgId      BigInt
   status     String   @default("PENDING") // PENDING | ACCEPTED
   createdAt  DateTime @default(now())
@@ -110,19 +112,23 @@ model CaseHive {
 }
 
 model Application {
-  id         BigInt   @id @default(autoincrement())
-  userId     String
-  name       String
-  age        Int
-  target     String
-  link       String
-  howToKnow  String
-  isAccepted Boolean  @default(false)
-  recruitId  String?
-  createdAt  DateTime @default(now())
-  reason     String?
-  recruit    User?    @relation("RecruitApplications", fields: [recruitId], references: [id])
-  user       User     @relation("UserApplications", fields: [userId], references: [id])
+  id            BigInt   @id @default(autoincrement())
+  userId        String
+  name          String
+  age           Int
+  target        String
+  link          String
+  howToKnow     String
+  isAccepted Boolean?
+  createdAt     DateTime @default(now())
+  sourceMessageUrl String?
+  reason        String?
+  recruitId     String?
+  recruit       User?    @relation("RecruitApplications", fields: [recruitId], references: [id])
+  callTakenById String?
+  callTakenAt   DateTime?
+  callTakenBy   User?    @relation("CallTakenApplications", fields: [callTakenById], references: [id])
+  user          User     @relation("UserApplications", fields: [userId], references: [id])
 }
 
 model Streamer {

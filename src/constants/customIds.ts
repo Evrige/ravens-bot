@@ -61,8 +61,10 @@ export const CUSTOM_IDS = {
 export const CUSTOM_COMMAND = {
 	DB_APPLICATION: "заявка_улики",
 	DB_ORGANISATION_ADD: "organisation-add",
+	DB_HIVE_PAYOUT: "pay-hive",
 	FAMILY_APPLICATION: "заявк_в_семью",
 	RECRUIT_STATS: "recruit-stats",
+	RECRUIT: "recruit",
 	STAFF_LIST: "staff-list",
 	BALANCE: "balance",
 	PROFILE: "profile",

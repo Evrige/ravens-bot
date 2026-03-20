@@ -1,16 +1,3 @@
-// src/handlers/cases/handleCases.ts
-// ВСЁ В ОДНОМ: создание кейса (с доком сразу), embed, замена улики, пересоздание дока, принятие кейса
-//
-// Требует в Prisma:
-// - Hive.isUsed Boolean @default(false)
-// - Case: docId String?, docUrl String?, channelId String?, messageId String?, status String, caseNumber Int, orgId BigInt
-// - CaseHive: @@unique([caseId, hiveId])
-//
-// ВАЖНО: кнопка "Сформировать кейс" у тебя имеет customId: `${CUSTOM_IDS.CREATE_CASE}${org.id}`
-// Этот файл парсит orgId именно так.
-//
-// ✅ Изменение: кейс можно формировать с ЛЮБЫМ кол-вом улик (1..11). Не требуем ровно 11.
-
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
@@ -39,23 +26,28 @@ const CASE_IDS = {
 	recreateDoc: (caseId: bigint) => `case:recreate_doc:${caseId.toString()}`,
 } as const;
 
-/* ===================== TEXT / EMBED ===================== */
+/* ===================== EMBED ===================== */
 
-function extractStartLine(text: string) {
-	const firstLine = (text || "").split("\n")[0]?.trim() ?? "";
-	return firstLine.replace(/^Начало записи\s*[:\-]?\s*/i, "").trim();
+function extractChannelIdFromLogUrl(logUrl?: string | null): string | null {
+	if (!logUrl) return null;
+
+	// https://discord.com/channels/guildId/channelId/messageId
+	const m = logUrl.match(/discord\.com\/channels\/\d+\/(\d+)\/\d+/);
+	return m?.[1] ?? null;
 }
 
 function buildCaseEmbed(params: {
+	caseId?: bigint | string;
 	caseNumber: number | string;
-	hives: Array<{ id: bigint; story: string }>;
+	hives: Array<{ id: bigint; logUrl?: string | null }>;
 	docUrl?: string | null;
 	status?: "PENDING" | "ACCEPTED";
 	orgName?: string | null;
 }) {
-	const lines = params.hives.map((h, i) => {
-		const title = extractStartLine(h.story) || "Улика";
-		return `${i + 1}. **[${h.id.toString()}]** ${title}`;
+	const lines = params.hives.map((h) => {
+		const channelId = extractChannelIdFromLogUrl(h.logUrl);
+		const logPart = channelId ? `<#${channelId}>` : "`лог недоступен`";
+		return `${h.id.toString()} - ${logPart}`;
 	});
 
 	const embed = new EmbedBuilder()
@@ -66,7 +58,17 @@ function buildCaseEmbed(params: {
 	const statusText = params.status === "ACCEPTED" ? "Принят ✅" : "Ожидает ⏳";
 	embed.addFields({ name: "Статус", value: statusText, inline: true });
 
-	if (params.orgName) embed.addFields({ name: "Организация", value: params.orgName, inline: true });
+	if (params.caseId) {
+		embed.addFields({
+			name: "ID кейса",
+			value: `\`${params.caseId.toString()}\``,
+			inline: true,
+		});
+	}
+
+	if (params.orgName) {
+		embed.addFields({ name: "Организация", value: params.orgName, inline: true });
+	}
 
 	if (params.docUrl) {
 		embed.addFields({
@@ -85,7 +87,6 @@ function buildCaseComponents(params: {
 	showRecreate?: boolean;
 	accepted?: boolean;
 }) {
-	// Если принят — оставим только ссылку на документ (если есть)
 	if (params.accepted) {
 		if (!params.docUrl) return [];
 		return [
@@ -97,7 +98,6 @@ function buildCaseComponents(params: {
 
 	const rows: Array<ActionRowBuilder<ButtonBuilder>> = [];
 
-	// 1) основные кнопки
 	rows.push(
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
@@ -108,7 +108,6 @@ function buildCaseComponents(params: {
 		),
 	);
 
-	// 2) ряд дока: пересоздать + ссылка
 	const docRow = new ActionRowBuilder<ButtonBuilder>();
 
 	if (params.showRecreate) {
@@ -129,18 +128,16 @@ function buildCaseComponents(params: {
 	return rows;
 }
 
-/* ===================== SELECT HIVES (ANY COUNT UP TO 11) ===================== */
+/* ===================== SELECT HIVES ===================== */
 
 type HiveWithForm = {
 	id: bigint;
-	story: string;
 	form: "ONE_HALF" | "ONE_QUARTER" | "ONE_FIFTH";
 	link?: string | null;
+	logUrl?: string | null;
 };
 
 function selectHivesForCase(hives: HiveWithForm[]) {
-	// Берём по “квотам”, но НЕ требуем добить до 11.
-	// Итог: сколько получилось (1..11), максимум 11.
 	const halves = hives.filter((h) => h.form === "ONE_HALF").slice(0, 2);
 	const quarters = hives.filter((h) => h.form === "ONE_QUARTER").slice(0, 4);
 	const fifths = hives.filter((h) => h.form === "ONE_FIFTH").slice(0, 5);
@@ -150,7 +147,6 @@ function selectHivesForCase(hives: HiveWithForm[]) {
 
 /* ===================== PARSERS ===================== */
 
-// твой customId: `${CUSTOM_IDS.CREATE_CASE}${org.id}`
 function parseOrgIdFromCreateCase(customId: string): bigint | null {
 	if (!customId.startsWith(CUSTOM_IDS.CREATE_CASE)) return null;
 	const orgIdStr = customId.slice(CUSTOM_IDS.CREATE_CASE.length);
@@ -162,10 +158,11 @@ function parseOrgIdFromCreateCase(customId: string): bigint | null {
 }
 
 function parseCaseButton(customId: string): { action: "accept" | "replace"; caseId: bigint } | null {
-	const parts = customId.split(":"); // case:<action>:<caseId>
+	const parts = customId.split(":");
 	if (parts.length !== 3) return null;
 	if (parts[0] !== "case") return null;
 	if (parts[1] !== "accept" && parts[1] !== "replace") return null;
+
 	try {
 		return { action: parts[1], caseId: BigInt(parts[2]) };
 	} catch {
@@ -174,10 +171,10 @@ function parseCaseButton(customId: string): { action: "accept" | "replace"; case
 }
 
 function parseRecreateDoc(customId: string): bigint | null {
-	// case:recreate_doc:<caseId>
 	const parts = customId.split(":");
 	if (parts.length !== 3) return null;
 	if (parts[0] !== "case" || parts[1] !== "recreate_doc") return null;
+
 	try {
 		return BigInt(parts[2]);
 	} catch {
@@ -185,13 +182,12 @@ function parseRecreateDoc(customId: string): bigint | null {
 	}
 }
 
-/* ===================== HANDLER: CREATE CASE BUTTON ===================== */
+/* ===================== CREATE CASE BUTTON ===================== */
 
 export async function handleCreateCaseButton(interaction: ButtonInteraction) {
 	const orgId = parseOrgIdFromCreateCase(interaction.customId);
 	if (!orgId) return false;
 
-	// showModal (нельзя deferReply перед showModal)
 	const modal = new ModalBuilder().setCustomId(CASE_IDS.createModal(orgId)).setTitle("Сформировать кейс");
 
 	const numInput = new TextInputBuilder()
@@ -206,12 +202,12 @@ export async function handleCreateCaseButton(interaction: ButtonInteraction) {
 	return true;
 }
 
-/* ===================== HANDLER: CREATE CASE MODAL ===================== */
+/* ===================== CREATE CASE MODAL ===================== */
 
 export async function handleCreateCaseModal(interaction: ModalSubmitInteraction) {
 	if (!interaction.customId.startsWith("case:create_modal:")) return false;
 
-	const parts = interaction.customId.split(":"); // case:create_modal:<orgId>
+	const parts = interaction.customId.split(":");
 	if (parts.length !== 3) return false;
 
 	let orgId: bigint;
@@ -238,7 +234,6 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 	}
 	const channel = interaction.channel as GuildTextBasedChannel;
 
-	// 1) берём организацию + доступные улики (ACCEPTED + isUsed=false)
 	const org = await prisma.organisation.findUnique({
 		where: { id: orgId },
 		select: {
@@ -247,7 +242,7 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 			hives: {
 				where: { status: "ACCEPTED", isUsed: false },
 				orderBy: { id: "asc" },
-				select: { id: true, story: true, form: true, link: true },
+				select: { id: true, form: true, link: true, logUrl: true },
 			},
 		},
 	});
@@ -259,13 +254,11 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 
 	const selected = selectHivesForCase(org.hives as unknown as HiveWithForm[]);
 
-	// ✅ теперь можно любое кол-во, но хотя бы 1 улика нужна
 	if (selected.length === 0) {
 		await interaction.editReply("❌ Нет доступных улик для формирования кейса.");
 		return true;
 	}
 
-	// 2) создаём кейс + связи
 	let createdCase: { id: bigint; caseNumber: number };
 	try {
 		createdCase = await prisma.$transaction(async (tx) => {
@@ -286,7 +279,6 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 		return true;
 	}
 
-	// 3) создаём Google Doc по выбранным уликам (если есть)
 	const hiveIds = selected.map((h) => h.id);
 
 	let docUrl: string | null = null;
@@ -297,18 +289,16 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 			const doc = await createCaseDocument({
 				orgId,
 				caseNumber,
-				hiveIds, // ⚠️ createCaseDocument должен поддерживать hiveIds
+				hiveIds,
 			} as any);
 
 			docUrl = doc?.url ?? null;
 			docId = doc?.docId ?? null;
 		} catch (e: any) {
-			// если док не создался — кейс всё равно есть; просто без ссылки
 			console.error("[case] createCaseDocument failed:", e?.message ?? e);
 		}
 	}
 
-	// сохраним ссылку (если есть)
 	if (docUrl) {
 		await prisma.case.update({
 			where: { id: createdCase.id },
@@ -316,10 +306,13 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 		});
 	}
 
-	// 4) публикуем embed
 	const embed = buildCaseEmbed({
+		caseId: createdCase.id,
 		caseNumber: createdCase.caseNumber,
-		hives: selected.map((h) => ({ id: h.id, story: h.story })),
+		hives: selected.map((h) => ({
+			id: h.id,
+			logUrl: h.logUrl ?? null,
+		})),
 		docUrl,
 		status: "PENDING",
 		orgName: org.name,
@@ -330,12 +323,11 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 		components: buildCaseComponents({
 			caseId: createdCase.id,
 			docUrl,
-			showRecreate: false, // пока не было замены
+			showRecreate: false,
 			accepted: false,
 		}),
 	});
 
-	// 5) сохраняем messageId/channelId
 	await prisma.case.update({
 		where: { id: createdCase.id },
 		data: { channelId: msg.channelId, messageId: msg.id },
@@ -345,10 +337,9 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 	return true;
 }
 
-/* ===================== HANDLER: CASE BUTTONS (ACCEPT/REPLACE/RECREATE DOC) ===================== */
+/* ===================== CASE BUTTONS ===================== */
 
 export async function handleCaseButtons(interaction: ButtonInteraction) {
-	// 0) Пересоздать документ
 	const recreateCaseId = parseRecreateDoc(interaction.customId);
 	if (recreateCaseId) {
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -363,7 +354,11 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 				channelId: true,
 				messageId: true,
 				docUrl: true,
-				caseHives: { select: { Hive: { select: { id: true, story: true } } } },
+				caseHives: {
+					select: {
+						Hive: { select: { id: true, logUrl: true } },
+					},
+				},
 			},
 		});
 
@@ -401,7 +396,6 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 			data: { docId: docId ?? undefined, docUrl: docUrl ?? undefined },
 		});
 
-		// обновим сообщение кейса
 		if (c.channelId && c.messageId) {
 			const ch = await interaction.client.channels.fetch(c.channelId).catch(() => null);
 			const msg = ch && ch.isTextBased() ? await ch.messages.fetch(c.messageId).catch(() => null) : null;
@@ -409,6 +403,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 			if (msg) {
 				const hives = c.caseHives.map((x) => x.Hive);
 				const embed = buildCaseEmbed({
+					caseId: c.id,
 					caseNumber: c.caseNumber,
 					hives,
 					docUrl,
@@ -421,7 +416,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 						components: buildCaseComponents({
 							caseId: recreateCaseId,
 							docUrl,
-							showRecreate: false, // после пересоздания можно спрятать
+							showRecreate: false,
 							accepted: (c.status as any) === "ACCEPTED",
 						}),
 					})
@@ -433,13 +428,11 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 		return true;
 	}
 
-	// 1) accept/replace
 	if (!interaction.customId.startsWith("case:")) return false;
 
 	const parsed = parseCaseButton(interaction.customId);
 	if (!parsed) return false;
 
-	// REPLACE -> showModal (без deferReply)
 	if (parsed.action === "replace") {
 		const modal = new ModalBuilder().setCustomId(CASE_IDS.replaceModal(parsed.caseId)).setTitle("Заменить улику в кейсе");
 
@@ -461,7 +454,6 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 		return true;
 	}
 
-	// ACCEPT
 	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 	const c = await prisma.case.findUnique({
@@ -496,15 +488,19 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 
 	await resetHivePanel(interaction.client).catch(() => {});
 
-	// обновим сообщение кейса: accepted + оставим только ссылку
 	const updated = await prisma.case.findUnique({
 		where: { id: parsed.caseId },
 		select: {
+			id: true,
 			caseNumber: true,
 			docUrl: true,
 			channelId: true,
 			messageId: true,
-			caseHives: { select: { Hive: { select: { id: true, story: true } } } },
+			caseHives: {
+				select: {
+					Hive: { select: { id: true, logUrl: true } },
+				},
+			},
 		},
 	});
 
@@ -515,6 +511,7 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 		if (msg) {
 			const hives = updated.caseHives.map((x) => x.Hive);
 			const embed = buildCaseEmbed({
+				caseId: updated.id,
 				caseNumber: updated.caseNumber,
 				hives,
 				docUrl: updated.docUrl ?? null,
@@ -538,12 +535,12 @@ export async function handleCaseButtons(interaction: ButtonInteraction) {
 	return true;
 }
 
-/* ===================== HANDLER: REPLACE MODAL SUBMIT ===================== */
+/* ===================== REPLACE MODAL SUBMIT ===================== */
 
 export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction) {
 	if (!interaction.customId.startsWith("case:replace_modal:")) return false;
 
-	const parts = interaction.customId.split(":"); // case:replace_modal:<caseId>
+	const parts = interaction.customId.split(":");
 	if (parts.length !== 3) return false;
 
 	let caseId: bigint;
@@ -559,7 +556,8 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 	const oldHiveIdStr = interaction.fields.getTextInputValue("oldHiveId").trim();
 	const newHiveIdStr = interaction.fields.getTextInputValue("newHiveId").trim();
 
-	let oldHiveId: bigint, newHiveId: bigint;
+	let oldHiveId: bigint;
+	let newHiveId: bigint;
 	try {
 		oldHiveId = BigInt(oldHiveIdStr);
 		newHiveId = BigInt(newHiveIdStr);
@@ -578,7 +576,11 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		select: {
 			id: true,
 			orgId: true,
+			caseNumber: true,
 			status: true,
+			docUrl: true,
+			channelId: true,
+			messageId: true,
 			caseHives: {
 				select: {
 					hiveId: true,
@@ -608,11 +610,9 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		return true;
 	}
 
-	// 1) найдём форму улики, которую заменяем (old)
 	const oldEntry = c.caseHives.find((x) => x.hiveId.toString() === oldHiveId.toString());
 	const oldForm = String(oldEntry?.Hive?.form || "");
 
-	// нормализуем в ONE_*
 	const normForm = (f: string) => {
 		if (f === "1/2") return "ONE_HALF";
 		if (f === "1/4") return "ONE_QUARTER";
@@ -622,7 +622,6 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 
 	const oldFormNorm = normForm(oldForm);
 
-	// 2) загрузим новую улику с org + form
 	const newHive = await prisma.hive.findUnique({
 		where: { id: newHiveId },
 		select: { id: true, status: true, isUsed: true, organisationId: true, form: true },
@@ -633,26 +632,20 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		return true;
 	}
 
-	// 3) проверка организации
 	if (newHive.organisationId.toString() !== c.orgId.toString()) {
 		await interaction.editReply("❌ Новая улика должна быть из этой же организации.");
 		return true;
 	}
 
-	// 4) проверка формы
 	const newFormNorm = normForm(String(newHive.form || ""));
 
-	// правила:
-	// old 1/2 -> new только 1/2
-	// old 1/4 -> new только 1/4
-	// old 1/5 -> new 1/5 ИЛИ 1/4
 	const allowed =
 		oldFormNorm === "ONE_HALF"
 			? ["ONE_HALF"]
 			: oldFormNorm === "ONE_QUARTER"
 				? ["ONE_QUARTER"]
 				: oldFormNorm === "ONE_FIFTH"
-					? ["ONE_FIFTH", "ONE_QUARTER"] // ✅ 1/5 можно заменить на 1/4
+					? ["ONE_FIFTH", "ONE_QUARTER"]
 					: [];
 
 	if (!allowed.includes(newFormNorm)) {
@@ -664,7 +657,6 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		return true;
 	}
 
-	// заменяем связь
 	await prisma.$transaction(async (tx) => {
 		await tx.caseHive.delete({
 			where: { caseId_hiveId: { caseId, hiveId: oldHiveId } } as any,
@@ -674,15 +666,19 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		});
 	});
 
-	// обновим сообщение кейса + покажем кнопку "Пересоздать документ"
 	const updated = await prisma.case.findUnique({
 		where: { id: caseId },
 		select: {
+			id: true,
 			caseNumber: true,
 			docUrl: true,
 			channelId: true,
 			messageId: true,
-			caseHives: { select: { Hive: { select: { id: true, story: true } } } },
+			caseHives: {
+				select: {
+					Hive: { select: { id: true, logUrl: true } },
+				},
+			},
 		},
 	});
 
@@ -693,6 +689,7 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 		if (msg) {
 			const hives = updated.caseHives.map((x) => x.Hive);
 			const embed = buildCaseEmbed({
+				caseId: updated.id,
 				caseNumber: updated.caseNumber,
 				hives,
 				docUrl: updated.docUrl ?? null,
@@ -705,7 +702,7 @@ export async function handleCaseReplaceModal(interaction: ModalSubmitInteraction
 					components: buildCaseComponents({
 						caseId,
 						docUrl: updated.docUrl ?? null,
-						showRecreate: true, // ✅ появляется после замены
+						showRecreate: true,
 						accepted: false,
 					}),
 				})

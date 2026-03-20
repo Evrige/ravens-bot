@@ -18,30 +18,22 @@ import { createButton } from "../../../components/createButton";
 import { config } from "../../../config/env";
 import { openDBApplicationModal } from "./openDBApplicationModal";
 import { postHiveToForum } from "./postHiveToOrgForum";
-import {createCaseDocument} from "../../../services/googleDocs";
 
 function isStaff(member: GuildMember) {
 	return member.roles.cache.some((r) => DB_STAFF_ROLE_IDS.includes(r.id));
 }
 
-// ✅ безопасный deferReply (чтобы не падало при 503)
-async function safeDeferReply(interaction: any) {
-	try {
-		// лучше через flags, а не ephemeral (discord.js v14 предупреждает)
-		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-		return true;
-	} catch (e: any) {
-		console.log("[db] deferReply failed:", e?.status ?? "", e?.message ?? e);
-		try {
-			if (!interaction.replied && !interaction.deferred) {
-				await interaction.reply({
-					content: "⚠️ Discord временно недоступен. Нажми ещё раз через пару секунд.",
-					flags: MessageFlags.Ephemeral,
-				});
-			}
-		} catch {}
-		return false;
-	}
+function hasAnyApplicationButtons(message: Message) {
+	return message.components?.some((row: any) =>
+		row.components?.some((btn: any) => {
+			const id = btn.customId || "";
+			return (
+				id.startsWith(CUSTOM_IDS.ACCEPT) ||
+				id.startsWith(CUSTOM_IDS.DECLINE) ||
+				id.startsWith(CUSTOM_IDS.CHANGE)
+			);
+		}),
+	);
 }
 
 export function buildDBButtons(hiveId: string, ownerId: string) {
@@ -101,10 +93,13 @@ export async function handleDBButtons(interaction: any) {
 	if (interaction.customId.startsWith(CUSTOM_IDS.COPY_TEXT)) {
 		const member = interaction.member as GuildMember;
 		if (!isStaff(member)) {
-			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+			return interaction.reply({
+				content: "❌ У вас нет прав.",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
 
-		await interaction.deferReply({ ephemeral: true });
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 		const hiveIdStr = interaction.customId.replace(CUSTOM_IDS.COPY_TEXT, "");
 
@@ -126,7 +121,7 @@ export async function handleDBButtons(interaction: any) {
 			await interaction.editReply("❌ Не удалось отправить ЛС.");
 		}
 
-		// ✅ добавляем ✅/❌ один раз
+		// добавляем ✅/❌ один раз
 		const msg = interaction.message;
 		const hasRow = msg.components.some((row: any) =>
 			row.components.some((btn: any) =>
@@ -160,17 +155,19 @@ export async function handleDBButtons(interaction: any) {
 	if (interaction.customId.startsWith(CUSTOM_IDS.SET_FORM)) {
 		const member = interaction.member as GuildMember;
 		if (!isStaff(member)) {
-			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+			return interaction.reply({
+				content: "❌ У вас нет прав.",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
 
 		await interaction.deferUpdate();
 
 		const payload = interaction.customId.replace(CUSTOM_IDS.SET_FORM, "");
-		const [hiveIdStr, formRaw] = payload.split(":"); // ONE_HALF / ONE_FIFTH
+		const [hiveIdStr, formRaw] = payload.split(":");
 
 		const hiveId = BigInt(hiveIdStr);
 
-		// берём logUrl из БД (fallback на текущую кнопку)
 		const hive = await prisma.hive.findUnique({
 			where: { id: hiveId },
 			include: { organisation: true },
@@ -178,7 +175,6 @@ export async function handleDBButtons(interaction: any) {
 
 		const logUrl = hive?.logUrl ?? interaction.message.url;
 
-		// ✅ сохраняем форму в БД
 		const formEnum =
 			formRaw === "ONE_HALF" ? "ONE_HALF" :
 				formRaw === "ONE_QUARTER" ? "ONE_QUARTER" :
@@ -186,12 +182,9 @@ export async function handleDBButtons(interaction: any) {
 
 		await prisma.hive.update({
 			where: { id: hiveId },
-			data: { status: "ACCEPTED", form: formEnum },
+			data: { status: "ACCEPTED", form: formEnum, logUrl },
 		}).catch(() => {});
 
-		const formLabel = formEnum === "ONE_HALF" ? "1/2" : formEnum === "ONE_QUARTER" ? "1/4" : "1/5";
-
-		// ✅ обновляем сводку в форуме
 		const res = await postHiveToForum({
 			guild: interaction.guild,
 			hiveIdStr,
@@ -200,11 +193,10 @@ export async function handleDBButtons(interaction: any) {
 		if (!res.ok) {
 			await interaction.followUp({
 				content: `⚠️ Не удалось обновить сводку: ${res.reason}`,
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			}).catch(() => {});
 		}
 
-		// чистим кнопки выбора и ставим ✅ реакцию
 		const msg = interaction.message;
 		await msg.reactions.removeAll().catch(() => {});
 		await msg.edit({ components: removeRows(msg) }).catch(() => {});
@@ -219,7 +211,10 @@ export async function handleDBButtons(interaction: any) {
 	) {
 		const member = interaction.member as GuildMember;
 		if (!isStaff(member)) {
-			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+			return interaction.reply({
+				content: "❌ У вас нет прав.",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
 
 		await interaction.deferUpdate();
@@ -245,22 +240,21 @@ export async function handleDBButtons(interaction: any) {
 			return;
 		}
 
-		// ✅ ACCEPT: получаем улику из БД
 		const hive = await prisma.hive.findUnique({
 			where: { id: hiveId },
 			include: { organisation: true },
 		});
 
 		if (!hive) {
-			await interaction.followUp({ content: "❌ Улика не найдена в БД.", ephemeral: true }).catch(() => {});
+			await interaction.followUp({
+				content: "❌ Улика не найдена в БД.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
 			return;
 		}
 
-		// logUrl уже должен быть сохранён при отправке в лог (из личного канала),
-		// но на всякий — fallback на msg.url
 		const logUrl = hive.logUrl ?? msg.url;
 
-		// REQUIRED => сразу 1/4 (без выбора)
 		if (String(hive.type).toUpperCase() === "REQUIRED") {
 			await prisma.hive.update({
 				where: { id: hiveId },
@@ -275,7 +269,7 @@ export async function handleDBButtons(interaction: any) {
 			if (!res.ok) {
 				await interaction.followUp({
 					content: `⚠️ Не удалось обновить сводку: ${res.reason}`,
-					ephemeral: true,
+					flags: MessageFlags.Ephemeral,
 				}).catch(() => {});
 			}
 
@@ -285,10 +279,9 @@ export async function handleDBButtons(interaction: any) {
 			return;
 		}
 
-		// OPTIONAL => показываем выбор 1/2 и 1/5
 		await prisma.hive.update({
 			where: { id: hiveId },
-			data: { status: "ACCEPTED", logUrl }, // форму поставим по кнопке
+			data: { status: "ACCEPTED", logUrl },
 		}).catch(() => {});
 
 		const formRow = buildFormButtons(hiveIdStr);
@@ -303,23 +296,33 @@ export async function handleDBButtons(interaction: any) {
 	// ===================== РЕДАКТИРОВАТЬ (в личном канале) =====================
 	if (interaction.customId.startsWith(CUSTOM_IDS.CHANGE)) {
 		const payload = interaction.customId.replace(CUSTOM_IDS.CHANGE, "");
-		const [hiveIdStr, ownerId] = payload.split(":");
+		const [, ownerId] = payload.split(":");
 
 		if (interaction.user.id !== ownerId) {
-			return interaction.reply({ content: "❌ Редактировать может только автор.", ephemeral: true });
+			return interaction.reply({
+				content: "❌ Редактировать может только автор.",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
 
-		return openDBApplicationModal(interaction, interaction.message.embeds[0]?.fields, interaction.message.id);
+		return openDBApplicationModal(
+			interaction,
+			interaction.message.embeds[0]?.fields,
+			interaction.message.id,
+		);
 	}
 
 	// ===================== ПРИНЯТЬ (в личном канале заявки) =====================
 	if (interaction.customId.startsWith(CUSTOM_IDS.ACCEPT)) {
 		const member = interaction.member as GuildMember;
 		if (!isStaff(member)) {
-			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+			return interaction.reply({
+				content: "❌ У вас нет прав.",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
 
-		await interaction.deferReply({ ephemeral: true });
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		await interaction.editReply("⏳ Принимаю улику, подожди...").catch(() => {});
 
 		const hiveIdStr = interaction.customId.replace(CUSTOM_IDS.ACCEPT, "");
@@ -348,7 +351,6 @@ export async function handleDBButtons(interaction: any) {
 			.setFooter({ text: "by Evri" })
 			.setTimestamp();
 
-		// отправка в лог + ✅ СОХРАНЕНИЕ logUrl В БД
 		const logChannel = interaction.guild?.channels.cache.get(config.DB_LOG_CHANNEL_ID);
 
 		if (logChannel?.isTextBased()) {
@@ -359,42 +361,38 @@ export async function handleDBButtons(interaction: any) {
 			});
 			const row = new ActionRowBuilder<ButtonBuilder>().addComponents(copyBtn);
 
-			const sent = await logChannel.send({ embeds: [resultEmbed], components: [row] }).catch(() => null);
+			const sent = await logChannel.send({
+				embeds: [resultEmbed],
+				components: [row],
+			}).catch(() => null);
 
 			if (sent) {
 				await prisma.hive.update({
 					where: { id: hiveId },
-					data: { logUrl: sent.url }, // ✅ сохраняем ссылку
+					data: { logUrl: sent.url },
 				}).catch(() => {});
 			}
 		}
 
 		await interaction.followUp({
 			content: "✅ Улика принята и отправлена в лог.",
-			ephemeral: true,
+			flags: MessageFlags.Ephemeral,
 		}).catch(async () => {
 			await interaction.editReply("✅ Улика принята и отправлена в лог.").catch(() => {});
 		});
 
-		// удаляем заявку
+		// удаляем только сообщение текущей заявки
 		await appMessage.delete().catch(() => {});
 
-		// и чистить канал (после ответа!)
+		// удаляем канал только если в нем больше нет других заявок
 		const appChannel = appMessage.channel;
 
 		if (appChannel?.isTextBased()) {
-			// берём побольше, чтобы не промахнуться
 			const messages = await appChannel.messages.fetch({ limit: 100 }).catch(() => null);
 
 			if (messages) {
-				// ищем любые сообщения с embed'ом "Улика" (мягкая проверка)
-				const hasAnyHiveMessage = messages.some((m: Message) => {
-					const e = m.embeds?.[0];
-					const title = (e?.title || "").toLowerCase();
-					return title.includes("улика"); // ✅ не строгое равенство
-				});
+				const hasAnyHiveMessage = messages.some((m: Message) => hasAnyApplicationButtons(m));
 
-				// если улик больше нет — тогда удаляем канал
 				if (!hasAnyHiveMessage) {
 					await appChannel.delete().catch(() => {});
 				}
@@ -408,7 +406,10 @@ export async function handleDBButtons(interaction: any) {
 	if (interaction.customId.startsWith(CUSTOM_IDS.DECLINE)) {
 		const member = interaction.member as GuildMember;
 		if (!isStaff(member)) {
-			return interaction.reply({ content: "❌ У вас нет прав.", ephemeral: true });
+			return interaction.reply({
+				content: "❌ У вас нет прав.",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
 
 		const hiveIdStr = interaction.customId.replace(CUSTOM_IDS.DECLINE, "");
@@ -423,7 +424,10 @@ export async function handleDBButtons(interaction: any) {
 			.setStyle(TextInputStyle.Paragraph)
 			.setRequired(true);
 
-		modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput));
+		modal.addComponents(
+			new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput),
+		);
+
 		return interaction.showModal(modal);
 	}
 }
