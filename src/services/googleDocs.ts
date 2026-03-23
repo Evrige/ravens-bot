@@ -2,7 +2,7 @@
 import { google } from "googleapis";
 import { prisma } from "../utils/prisma";
 import { config } from "../config/env";
-import { hexToRuColorName } from "../utils/getColorToText";
+import {getColorName} from "../utils/detectives/orgColors";
 
 /* ===================== AUTH ===================== */
 
@@ -414,7 +414,7 @@ export async function createCaseDocument(params: {
 	requests.push(replaceText("{{ORG_NAME}}", org.name));
 	requests.push(replaceText("{{ORG_SUBJECT}}", org.subject ?? "-"));
 	requests.push(replaceText("{{ORG_ADDRESS}}", org.adress ?? "-"));
-	requests.push(replaceText("{{ORG_COLOR}}", `${hexToRuColorName(org.color)}`));
+	requests.push(replaceText("{{ORG_COLOR}}", `${getColorName(org.color)}`));
 	requests.push(replaceText("{{HIVES_BLOCK}}", hivesBlock));
 
 	await docs.documents.batchUpdate({

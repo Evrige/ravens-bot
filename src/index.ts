@@ -50,6 +50,8 @@ import {familyPanelReset} from "./commands/detectives/familyPanelReset";
 import {recruitCommand} from "./commands/ravens-family/recruit";
 import {hivePayoutCommand} from "./commands/detectives/hive-payout";
 import {internshipCommand} from "./commands/detectives/internship";
+import {organisationsListCommand} from "./commands/detectives/organisations-list";
+import {startOrganisationsPanelUpdater} from "./services/startOrganisationsPanelUpdater";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -102,6 +104,7 @@ const hiveCommands = [
 	familyPanelReset.data.toJSON(),
 	hivePayoutCommand.data.toJSON(),
 	internshipCommand.data.toJSON(),
+	organisationsListCommand.data.toJSON(),
 ];
 
 const serversCommands = [
@@ -156,6 +159,7 @@ client.once("ready", async () => {
 	startWeeklyFeeUpdater(client);
 	startHiveStatsUpdater(client)
 	startStaffListUpdater(client);
+	startOrganisationsPanelUpdater(client)
 	initVoiceTracker(client);
 	initMessageTracker(client);
 	initTempVoice(client);

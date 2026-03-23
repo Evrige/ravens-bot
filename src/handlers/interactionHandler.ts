@@ -57,6 +57,7 @@ import { familyPanelReset } from "../commands/detectives/familyPanelReset";
 import { recruitCommand } from "../commands/ravens-family/recruit";
 import { hivePayoutCommand } from "../commands/detectives/hive-payout";
 import {internshipCommand} from "../commands/detectives/internship";
+import {organisationsListCommand} from "../commands/detectives/organisations-list";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -89,6 +90,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.RECRUIT]: recruitCommand,
 	[CUSTOM_COMMAND.DB_HIVE_PAYOUT]: hivePayoutCommand,
 	[CUSTOM_COMMAND.DB_INTERNSHIP]: internshipCommand,
+	[CUSTOM_COMMAND.DB_ORGANISATIONS_LIST]: organisationsListCommand,
 };
 
 // ================== Обработчик интеракций ==================

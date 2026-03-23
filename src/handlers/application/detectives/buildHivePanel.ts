@@ -3,9 +3,9 @@ import {
 	EmbedBuilder,
 	StringSelectMenuBuilder,
 } from "discord.js";
-import {colorToEmoji} from "../../../utils/colorToEmoji";
 import {prisma} from "../../../utils/prisma";
 import {CUSTOM_IDS} from "../../../constants/customIds";
+import {getColorEmoji} from "../../../utils/detectives/orgColors";
 
 function buildOrgSelect(customId: string, placeholder: string, orgs: Array<{ id: bigint; name: string; color: string }>) {
 	const select = new StringSelectMenuBuilder()
@@ -15,7 +15,7 @@ function buildOrgSelect(customId: string, placeholder: string, orgs: Array<{ id:
 			orgs.slice(0, 25).map(o => ({
 				label: o.name.slice(0, 100),
 				value: o.id.toString(),
-				emoji: { name: colorToEmoji(o.color) },
+				emoji: { name: getColorEmoji(o.color) },
 			}))
 		);
 

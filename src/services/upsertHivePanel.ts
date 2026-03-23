@@ -4,9 +4,6 @@ import {buildHivePanelMessage} from "../handlers/application/detectives/buildHiv
 
 const TYPE = "hive_panel";
 
-/**
- * Создаёт/обновляет одно сообщение панели в том канале, где вызвали команду.
- */
 export async function upsertHivePanelInChannel(channel: TextChannel) {
 	const payload = await buildHivePanelMessage();
 
@@ -38,10 +35,6 @@ export async function upsertHivePanelInChannel(channel: TextChannel) {
 	return { ok: true, mode: "created" as const, messageId: msg.id };
 }
 
-/**
- * Рефрешит панель (чтобы селект визуально сбросился).
- * Можно вызывать после submit модалки.
- */
 export async function resetHivePanel(client: any) {
 	const stored = await prisma.botMessage.findUnique({
 		where: { type: TYPE },

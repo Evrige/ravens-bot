@@ -3,6 +3,7 @@ import {
 	ChannelType,
 	Client,
 	ForumChannel,
+	Message,
 	MessageFlags,
 	ThreadChannel,
 } from "discord.js";
@@ -12,72 +13,71 @@ import { config } from "../config/env";
 export const FAMILY_PANEL = {
 	THREAD_NAME: "📋 Список семей",
 	BOTMSG_TYPE: "family_list_panel",
-	CID_PREFIX: "family:list",
+	MULTI_PREFIX: "family_list_panel_chunk_",
 
 	customId: {
 		edit: (orgId: bigint) => `family:list:edit:${orgId.toString()}`,
 		freeze: (orgId: bigint) => `family:list:freeze:${orgId.toString()}`,
 		del: (orgId: bigint) => `family:list:delete:${orgId.toString()}`,
 		editModal: (orgId: bigint) => `family:list:modal_edit:${orgId.toString()}`,
-
-		// ✅ пагинация (листать одной и той же панелью)
-		page: (pageIndex: number) => `family:list:page:${pageIndex}`,
 	},
 } as const;
 
-const V2 = { Container: 17, TextDisplay: 10, Separator: 14 } as const;
+const V2 = {
+	Container: 17,
+	TextDisplay: 10,
+	Separator: 14,
+} as const;
 
-/**
- * ✅ ВАЖНО:
- * Discord лимитит "Total number of components cannot exceed 40" НА ВСЁ сообщение.
- * Поэтому мы рендерим ТОЛЬКО ОДНУ страницу (один Container) и листаем кнопками.
- *
- * Формула компонентов:
- *  - сверху 2 (title + separator)
- *  - на 1 семью 3 (TextDisplay + ActionRow + Separator)
- *  => 2 + 3*N <= 40 => N <= 12
- */
-function buildFamiliesPanelPage(
-	orgs: Array<{ id: bigint; name: string; isFreeze: boolean }>,
-	pageIndex: number,
-	perPage = 12
-) {
-	// ✅ если семей нет — возвращаем 1 контейнер с заглушкой,
-	// иначе components может быть [] и Discord даст 50006
-	if (!orgs.length) {
-		return [
-			{
-				type: V2.Container,
-				components: [
-					{ type: V2.TextDisplay, content: "## 👨‍👩‍👧‍👦 Семьи" },
-					{ type: V2.Separator },
-					{ type: V2.TextDisplay, content: "Пока нет семей." },
-				],
-			},
-		] as any[];
+const CHUNK_SIZE = 5;
+
+type FamilyOrg = {
+	id: bigint;
+	name: string;
+	isFreeze: boolean;
+};
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+	const chunks: T[][] = [];
+	for (let i = 0; i < arr.length; i += size) {
+		chunks.push(arr.slice(i, i + size));
 	}
+	return chunks;
+}
 
-	const totalPages = Math.max(1, Math.ceil(orgs.length / perPage));
-	const safePage = Math.min(Math.max(pageIndex, 0), totalPages - 1);
-
-	const start = safePage * perPage;
-	const page = orgs.slice(start, start + perPage);
+function buildFamiliesChunk(
+	orgs: FamilyOrg[],
+	chunkIndex: number,
+	totalChunks: number
+) {
+	const title =
+		totalChunks > 1
+			? `## 👨‍👩‍👧‍👦 Семьи (${chunkIndex + 1}/${totalChunks})`
+			: "## 👨‍👩‍👧‍👦 Семьи";
 
 	const container: any = {
 		type: V2.Container,
 		components: [
 			{
 				type: V2.TextDisplay,
-				content:
-					totalPages > 1
-						? `## 👨‍👩‍👧‍👦 Семьи (стр. ${safePage + 1}/${totalPages})`
-						: "## 👨‍👩‍👧‍👦 Семьи",
+				content: title,
 			},
-			{ type: V2.Separator },
+			{
+				type: V2.Separator,
+			},
 		],
 	};
 
-	for (const org of page) {
+	if (!orgs.length) {
+		container.components.push({
+			type: V2.TextDisplay,
+			content: "Пока нет семей.",
+		});
+
+		return [container] as any[];
+	}
+
+	for (const org of orgs) {
 		container.components.push({
 			type: V2.TextDisplay,
 			content: org.isFreeze ? `## ❄️ ${org.name}` : `## ${org.name}`,
@@ -87,49 +87,28 @@ function buildFamiliesPanelPage(
 			type: 1, // ActionRow
 			components: [
 				{
-					type: 2, // Button
-					style: 2, // Secondary
+					type: 2,
+					style: 2,
 					label: "Редактировать",
 					custom_id: FAMILY_PANEL.customId.edit(org.id),
 				},
 				{
 					type: 2,
-					style: org.isFreeze ? 3 : 2, // Success если "Разморозить"
+					style: org.isFreeze ? 3 : 2,
 					label: org.isFreeze ? "Разморозить" : "Заморозить",
 					custom_id: FAMILY_PANEL.customId.freeze(org.id),
 				},
 				{
 					type: 2,
-					style: 4, // Danger
+					style: 4,
 					label: "Удалить",
 					custom_id: FAMILY_PANEL.customId.del(org.id),
 				},
 			],
 		});
 
-		container.components.push({ type: V2.Separator });
-	}
-
-	// ✅ навигация (ещё 1 ActionRow)
-	if (totalPages > 1) {
 		container.components.push({
-			type: 1,
-			components: [
-				{
-					type: 2,
-					style: 2,
-					label: "⬅️ Назад",
-					custom_id: FAMILY_PANEL.customId.page(safePage - 1),
-					disabled: safePage === 0,
-				},
-				{
-					type: 2,
-					style: 2,
-					label: "➡️ Вперёд",
-					custom_id: FAMILY_PANEL.customId.page(safePage + 1),
-					disabled: safePage >= totalPages - 1,
-				},
-			],
+			type: V2.Separator,
 		});
 	}
 
@@ -147,16 +126,12 @@ async function getFamilyForum(client: Client): Promise<ForumChannel | null> {
 }
 
 function pickAppliedTagsIfRequired(forum: ForumChannel): string[] | undefined {
-	// ⚠️ Если на форуме стоят "обязательные теги", Discord не даст создать пост без appliedTags.
-	// - если есть хотя бы один availableTag — ставим первый
-	// - если нет — вернём undefined (тогда форум без обязательных тегов)
 	const tags = (forum as any).availableTags as Array<{ id: string; name: string }> | undefined;
 	if (!tags?.length) return undefined;
 	return [tags[0].id];
 }
 
 async function ensureThread(forum: ForumChannel, storedChannelId?: string) {
-	// 1) сохранённый тред
 	if (storedChannelId) {
 		const existing = await forum.client.channels.fetch(storedChannelId).catch(() => null);
 		if (existing && existing.isThread()) {
@@ -167,7 +142,6 @@ async function ensureThread(forum: ForumChannel, storedChannelId?: string) {
 		}
 	}
 
-	// 2) активные
 	const active = await forum.threads.fetchActive().catch(() => null);
 	const foundActive = active?.threads?.find((t) => t.name === FAMILY_PANEL.THREAD_NAME);
 	if (foundActive) {
@@ -177,7 +151,6 @@ async function ensureThread(forum: ForumChannel, storedChannelId?: string) {
 		return th;
 	}
 
-	// 3) архивные (важно для форумов)
 	const archived = await forum.threads
 		.fetchArchived({ type: "public", fetchAll: true })
 		.catch(() => null);
@@ -190,7 +163,6 @@ async function ensureThread(forum: ForumChannel, storedChannelId?: string) {
 		return th;
 	}
 
-	// 4) создаём новый пост
 	const appliedTags = pickAppliedTagsIfRequired(forum);
 
 	return await forum.threads.create({
@@ -200,18 +172,172 @@ async function ensureThread(forum: ForumChannel, storedChannelId?: string) {
 	});
 }
 
+function getChunkType(index: number) {
+	return `${FAMILY_PANEL.MULTI_PREFIX}${index}`;
+}
+
+async function getStoredChunkMessages() {
+	const rows = await prisma.botMessage.findMany({
+		where: {
+			OR: [
+				{ type: FAMILY_PANEL.BOTMSG_TYPE },
+				{ type: { startsWith: FAMILY_PANEL.MULTI_PREFIX } },
+			],
+		},
+		orderBy: { type: "asc" },
+	});
+
+	const chunkRows = rows
+		.map((row) => {
+			if (row.type === FAMILY_PANEL.BOTMSG_TYPE) {
+				return {
+					index: 0,
+					type: row.type,
+					messageId: row.messageId,
+					channelId: row.channelId,
+				};
+			}
+
+			const n = Number(row.type.replace(FAMILY_PANEL.MULTI_PREFIX, ""));
+			if (Number.isNaN(n)) return null;
+
+			return {
+				index: n,
+				type: row.type,
+				messageId: row.messageId,
+				channelId: row.channelId,
+			};
+		})
+		.filter(Boolean)
+		.sort((a: any, b: any) => a.index - b.index) as Array<{
+		index: number;
+		type: string;
+		messageId: string;
+		channelId: string;
+	}>;
+
+	return chunkRows;
+}
+
+async function saveChunkMessage(index: number, message: Message, threadId: string) {
+	const type = index === 0 ? FAMILY_PANEL.BOTMSG_TYPE : getChunkType(index);
+
+	await prisma.botMessage.upsert({
+		where: { type },
+		create: {
+			type,
+			messageId: message.id,
+			channelId: threadId,
+		},
+		update: {
+			messageId: message.id,
+			channelId: threadId,
+		},
+	});
+}
+
+async function deleteStoredChunk(index: number) {
+	const type = index === 0 ? FAMILY_PANEL.BOTMSG_TYPE : getChunkType(index);
+
+	await prisma.botMessage.delete({
+		where: { type },
+	}).catch(() => null);
+}
+
+async function fetchMessageSafe(thread: ThreadChannel, messageId: string) {
+	return await thread.messages.fetch(messageId).catch(() => null);
+}
+
+async function syncFamilyChunkMessages(thread: ThreadChannel, orgs: FamilyOrg[]) {
+	const chunks = chunkArray(orgs, CHUNK_SIZE);
+	const finalChunks = chunks.length ? chunks : [[]];
+
+	const stored = await getStoredChunkMessages();
+
+	let edited = 0;
+	let created = 0;
+	let deleted = 0;
+
+	for (let i = 0; i < finalChunks.length; i++) {
+		const components = buildFamiliesChunk(finalChunks[i], i, finalChunks.length) as any;
+		const storedRow = stored.find((x) => x.index === i);
+
+		if (storedRow) {
+			const existingMsg = await fetchMessageSafe(thread, storedRow.messageId);
+
+			if (existingMsg) {
+				await existingMsg.edit({
+					flags: MessageFlags.IsComponentsV2,
+					components,
+				});
+				edited++;
+				continue;
+			}
+		}
+
+		const newMsg = await thread.send({
+			flags: MessageFlags.IsComponentsV2,
+			components,
+		});
+
+		await saveChunkMessage(i, newMsg, thread.id);
+		created++;
+	}
+
+	for (const row of stored) {
+		if (row.index < finalChunks.length) continue;
+
+		const msg = await fetchMessageSafe(thread, row.messageId);
+		if (msg) {
+			await msg.delete().catch(() => null);
+		}
+
+		await deleteStoredChunk(row.index);
+		deleted++;
+	}
+
+	// если почему-то index 0 был не FAMILY_PANEL.BOTMSG_TYPE, а chunk_0 — подчистим
+	await prisma.botMessage.deleteMany({
+		where: {
+			type: getChunkType(0),
+		},
+	}).catch(() => null);
+
+	// дополнительно гарантируем, что channelId у главной записи актуален
+	const firstRow = await prisma.botMessage.findUnique({
+		where: { type: FAMILY_PANEL.BOTMSG_TYPE },
+	});
+
+	if (firstRow) {
+		await prisma.botMessage.update({
+			where: { type: FAMILY_PANEL.BOTMSG_TYPE },
+			data: { channelId: thread.id },
+		}).catch(() => null);
+	}
+
+	return {
+		edited,
+		created,
+		deleted,
+		total: finalChunks.length,
+	};
+}
+
 export async function upsertFamilyListPanel(client: Client) {
 	try {
 		const forum = await getFamilyForum(client);
 		if (!forum) {
-			return { ok: false as const, reason: "DB_FORUM_FAMILY_ID not set or not a forum" };
+			return {
+				ok: false as const,
+				reason: "DB_FORUM_FAMILY_ID not set or not a forum",
+			};
 		}
 
-		const stored = await prisma.botMessage.findUnique({
+		const storedMain = await prisma.botMessage.findUnique({
 			where: { type: FAMILY_PANEL.BOTMSG_TYPE },
 		});
 
-		const thread = await ensureThread(forum, stored?.channelId);
+		const thread = await ensureThread(forum, storedMain?.channelId);
 
 		const orgs = await prisma.organisation.findMany({
 			where: { type: "FAMILY" },
@@ -219,79 +345,18 @@ export async function upsertFamilyListPanel(client: Client) {
 			select: { id: true, name: true, isFreeze: true },
 		});
 
-		// ✅ ВАЖНО: создаём ТОЛЬКО 1 страницу, иначе словим лимит 40 компонентов
-		const components = buildFamiliesPanelPage(orgs, 0, 12);
+		const syncResult = await syncFamilyChunkMessages(thread, orgs);
 
-		// если сообщение было — редактируем
-		if (stored?.messageId) {
-			const msg = await thread.messages.fetch(stored.messageId).catch(() => null);
-			if (msg) {
-				await msg.edit({
-					flags: MessageFlags.IsComponentsV2,
-					components: components as any,
-				});
-				return { ok: true as const, mode: "edited" as const, threadId: thread.id };
-			}
-		}
-
-		// иначе — создаём
-		const sent = await thread.send({
-			flags: MessageFlags.IsComponentsV2,
-			components: components as any,
-		});
-
-		await prisma.botMessage.upsert({
-			where: { type: FAMILY_PANEL.BOTMSG_TYPE },
-			create: {
-				type: FAMILY_PANEL.BOTMSG_TYPE,
-				messageId: sent.id,
-				channelId: thread.id,
-			},
-			update: {
-				messageId: sent.id,
-				channelId: thread.id,
-			},
-		});
-
-		return { ok: true as const, mode: "created" as const, threadId: thread.id };
+		return {
+			ok: true as const,
+			mode: "edited" as const,
+			threadId: thread.id,
+			...syncResult,
+		};
 	} catch (e: any) {
 		return {
 			ok: false as const,
 			reason: e?.message ?? "unknown error",
 		};
 	}
-}
-
-/**
- * ✅ Хелпер для обработчика кнопок:
- * customId будет вида "family:list:page:3"
- */
-export function parseFamilyListPageCustomId(customId: string): number | null {
-	const m = /^family:list:page:(-?\d+)$/.exec(customId);
-	if (!m) return null;
-	const n = Number(m[1]);
-	return Number.isFinite(n) ? n : null;
-}
-
-/**
- * ✅ Вызови это в обработчике кнопок "page", чтобы перелистывать:
- */
-export async function renderFamilyListPage(
-	client: Client,
-	pageIndex: number
-): Promise<{ components: any[]; total: number }> {
-	const orgs = await prisma.organisation.findMany({
-		where: { type: "FAMILY" },
-		orderBy: [{ isFreeze: "asc" }, { id: "asc" }],
-		select: { id: true, name: true, isFreeze: true },
-	});
-
-	const perPage = 12;
-	const totalPages = Math.max(1, Math.ceil(orgs.length / perPage));
-	const safePage = Math.min(Math.max(pageIndex, 0), totalPages - 1);
-
-	return {
-		components: buildFamiliesPanelPage(orgs, safePage, perPage),
-		total: totalPages,
-	};
 }
