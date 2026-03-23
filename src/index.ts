@@ -49,6 +49,7 @@ import {weeklyFeeRemoveCommand} from "./commands/ravens-family/weekly-fee-remove
 import {familyPanelReset} from "./commands/detectives/familyPanelReset";
 import {recruitCommand} from "./commands/ravens-family/recruit";
 import {hivePayoutCommand} from "./commands/detectives/hive-payout";
+import {internshipCommand} from "./commands/detectives/internship";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -100,6 +101,7 @@ const hiveCommands = [
 	hiveStatsCommand.data.toJSON(),
 	familyPanelReset.data.toJSON(),
 	hivePayoutCommand.data.toJSON(),
+	internshipCommand.data.toJSON(),
 ];
 
 const serversCommands = [

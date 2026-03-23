@@ -62,6 +62,7 @@ export const CUSTOM_COMMAND = {
 	DB_APPLICATION: "заявка_улики",
 	DB_ORGANISATION_ADD: "organisation-add",
 	DB_HIVE_PAYOUT: "pay-hive",
+	DB_INTERNSHIP: "internship",
 	FAMILY_APPLICATION: "заявк_в_семью",
 	RECRUIT_STATS: "recruit-stats",
 	RECRUIT: "recruit",
