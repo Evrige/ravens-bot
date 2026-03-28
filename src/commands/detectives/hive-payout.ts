@@ -27,7 +27,7 @@ export const hivePayoutCommand = {
 		.setDescription("Сформировать выплаты по уликам"),
 
 	async execute(interaction: ChatInputCommandInteraction) {
-		await interaction.deferReply({ ephemeral: true }).catch(() => {});
+		await interaction.deferReply().catch(() => {});
 
 		if (!(await checkRolesOrReply(interaction, DB_STAFF_ROLE_IDS))) return;
 
@@ -164,13 +164,11 @@ export const hivePayoutCommand = {
 		for (let i = 1; i < chunks.length; i++) {
 			await interaction.followUp({
 				content: chunks[i],
-				ephemeral: true,
 			}).catch(() => {});
 		}
 
 		await interaction.followUp({
 			content: `Итого: ${totalSum}`,
-			ephemeral: true,
 		}).catch(() => {});
 	},
 };

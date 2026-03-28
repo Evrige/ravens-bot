@@ -52,6 +52,7 @@ import {hivePayoutCommand} from "./commands/detectives/hive-payout";
 import {internshipCommand} from "./commands/detectives/internship";
 import {organisationsListCommand} from "./commands/detectives/organisations-list";
 import {startOrganisationsPanelUpdater} from "./services/startOrganisationsPanelUpdater";
+import {startEventNotifications} from "./services/startEventNotifications";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -160,6 +161,7 @@ client.once("ready", async () => {
 	startHiveStatsUpdater(client)
 	startStaffListUpdater(client);
 	startOrganisationsPanelUpdater(client)
+	startEventNotifications(client);
 	initVoiceTracker(client);
 	initMessageTracker(client);
 	initTempVoice(client);
