@@ -117,9 +117,8 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 		const [applicationIdRaw, messageId] = data.split("_");
 
 		if (!applicationIdRaw) {
-			return interaction.reply({
+			return interaction.editReply({
 				content: "Ошибка: ID заявки не найден ❌",
-				ephemeral: true,
 			});
 		}
 
@@ -130,9 +129,8 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 		});
 
 		if (!application) {
-			return interaction.reply({
+			return interaction.editReply({
 				content: "Ошибка: заявка не найдена ❌",
-				ephemeral: true,
 			});
 		}
 

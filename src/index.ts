@@ -33,7 +33,7 @@ import {startTwitchChecker} from "./services/twitchChecker";
 import {streamerRemoveCommand} from "./commands/ravens-family/streamer-remove";
 import {balanceCheckCommand, balanceCommand, giveCommand, takeCommand} from "./commands/ravens-family/balanceKeeper";
 import {startMarketUpdater} from "./services/startMarketUpdater";
-import {marketAddCommand, marketCommand} from "./commands/ravens-family/market";
+import {marketAddCommand, marketCommand, marketRemoveCommand} from "./commands/ravens-family/market";
 import {profileCommand} from "./commands/ravens-family/profile";
 import {initMessageTracker} from "./services/messageTracker";
 import {startStaffListUpdater} from "./services/startStaffListUpdater";
@@ -51,8 +51,19 @@ import {recruitCommand} from "./commands/ravens-family/recruit";
 import {hivePayoutCommand} from "./commands/detectives/hive-payout";
 import {internshipCommand} from "./commands/detectives/internship";
 import {organisationsListCommand} from "./commands/detectives/organisations-list";
+import {navigationPanelCommand} from "./commands/ravens-family/navigation-panel";
 import {startOrganisationsPanelUpdater} from "./services/startOrganisationsPanelUpdater";
 import {startEventNotifications} from "./services/startEventNotifications";
+import {startFamilyAuditLogger} from "./services/startFamilyAuditLogger";
+import {startFamilyWelcomeNotifier} from "./services/startFamilyWelcomeNotifier";
+import {startFamilyEventsPanelUpdater} from "./services/startFamilyEventsPanelUpdater";
+import {upsertFamilyAfkPanel} from "./services/upsertFamilyAfkPanel";
+import { giveawayCommand } from "./commands/ravens-family/giveaway";
+import { startGiveawayWatcher } from "./services/startGiveawayWatcher";
+import { upsertFamilyImprovementPanels } from "./services/upsertFamilyImprovementPanels";
+import { startFamilyLeaderboardUpdater } from "./services/startFamilyLeaderboardUpdater";
+import { startFamilyAfkWatcher } from "./services/startFamilyAfkWatcher";
+import { startMarketOrdersPanelUpdater } from "./services/startMarketOrdersPanelUpdater";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -65,7 +76,7 @@ export const client = new Client({
 		GatewayIntentBits.GuildMessages,
 		GatewayIntentBits.MessageContent
 	],
-	partials: [Partials.Channel]
+	partials: [Partials.Channel, Partials.Message]
 });
 
 // =======================================================
@@ -91,11 +102,14 @@ const familyCommands = [
 	takeCommand.data.toJSON(),
 	marketCommand.data.toJSON(),
 	marketAddCommand.data.toJSON(),
+	marketRemoveCommand.data.toJSON(),
 	profileCommand.data.toJSON(),
 	weeklyFeeAddCommand.data.toJSON(),
 	weeklyFeePanelCommand.data.toJSON(),
 	weeklyFeeRemoveCommand.data.toJSON(),
 	recruitCommand.data.toJSON(),
+	navigationPanelCommand.data.toJSON(),
+	giveawayCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -108,22 +122,22 @@ const hiveCommands = [
 	organisationsListCommand.data.toJSON(),
 ];
 
-const serversCommands = [
-	{
-		guildId: process.env.FAMILY_SERVER_GUID!,
-		commands: familyCommands
-	},
-	{
-		guildId: process.env.DB_SERVER_GUID!,
-		commands: hiveCommands
-	}
-];
 // const serversCommands = [
 // 	{
 // 		guildId: process.env.FAMILY_SERVER_GUID!,
-// 		commands: [...familyCommands, ...hiveCommands]
+// 		commands: familyCommands
+// 	},
+// 	{
+// 		guildId: process.env.DB_SERVER_GUID!,
+// 		commands: hiveCommands
 // 	}
 // ];
+const serversCommands = [
+	{
+		guildId: process.env.FAMILY_SERVER_GUID!,
+		commands: [...familyCommands, ...hiveCommands]
+	}
+];
 // =======================================================
 // Ready
 // =======================================================
@@ -162,10 +176,19 @@ client.once("ready", async () => {
 	startStaffListUpdater(client);
 	startOrganisationsPanelUpdater(client)
 	startEventNotifications(client);
+	startFamilyEventsPanelUpdater(client);
+	startFamilyLeaderboardUpdater(client);
+	startGiveawayWatcher(client);
+	startFamilyAuditLogger(client);
+	startFamilyWelcomeNotifier(client);
+	startFamilyAfkWatcher(client);
+	startMarketOrdersPanelUpdater(client);
 	initVoiceTracker(client);
 	initMessageTracker(client);
 	initTempVoice(client);
 	await upsertFamilyListPanel(client);
+	await upsertFamilyAfkPanel(client);
+	await upsertFamilyImprovementPanels(client);
 	await startRecruitStatsUpdater();
 });
 

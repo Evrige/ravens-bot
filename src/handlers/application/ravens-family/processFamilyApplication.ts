@@ -2,14 +2,7 @@ import { EmbedBuilder, Guild, MessageFlags, TextChannel } from "discord.js";
 import { prisma } from "../../../utils/prisma";
 import { FAMILY_USER_ROLE_IDS } from "../../../config/staff";
 import { config } from "../../../config/env";
-
-async function deleteUserTicketChannels(guild: Guild, username: string) {
-	const textChannel = guild.channels.cache.find((c: any) => c.name === `чат-${username}`);
-	const voiceChannel = guild.channels.cache.find((c: any) => c.name === `обзвон-${username}`);
-
-	if (textChannel) await textChannel.delete("Заявка обработана").catch(() => {});
-	if (voiceChannel) await voiceChannel.delete("Заявка обработана").catch(() => {});
-}
+import { deleteFamilyTicketChannels } from "./familyTicketChannels";
 
 async function safeInteractionResponse(interaction: any, content: string) {
 	try {
@@ -156,11 +149,7 @@ export async function processFamilyApplication(
 			await interaction.message.delete().catch(() => {});
 		}
 
-		const member = await interaction.guild.members.fetch(updatedApplication.userId).catch(() => null);
-		const username = member?.user.username;
-		if (username) {
-			await deleteUserTicketChannels(interaction.guild, username);
-		}
+		await deleteFamilyTicketChannels(interaction.guild, updatedApplication.userId);
 	} catch (err) {
 		console.error("Ошибка processFamilyApplication:", err);
 		await safeInteractionResponse(interaction, "Произошла ошибка ❌");

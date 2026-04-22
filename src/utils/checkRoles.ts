@@ -16,10 +16,16 @@ export function hasAllowedRole(interaction: ChatInputCommandInteraction, allowed
  */
 export async function checkRolesOrReply(interaction: ChatInputCommandInteraction, allowedRoles: string[]): Promise<boolean> {
 	if (!hasAllowedRole(interaction, allowedRoles)) {
-		await interaction.reply({
+		const payload = {
 			content: "❌ У тебя нет прав на использование этой команды",
 			ephemeral: true
-		});
+		};
+
+		if (interaction.deferred || interaction.replied) {
+			await interaction.editReply(payload).catch(() => null);
+		} else {
+			await interaction.reply(payload).catch(() => null);
+		}
 		return false;
 	}
 	return true;

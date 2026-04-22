@@ -15,10 +15,9 @@ import { createButton } from "../../../components/createButton";
 import { CUSTOM_IDS } from "../../../constants/customIds";
 import { openFamilyApplicationModal } from "./openFamilyApplicationModal";
 import { processFamilyApplication } from "./processFamilyApplication";
-import { config } from "../../../config/env";
 import { FAMILY_HIGH_ROLE_IDS, FAMILY_RECRUIT_ROLE_IDS } from "../../../config/staff";
-import { createPrivateChannel } from "../../../utils/createPrivateChannel";
 import { prisma } from "../../../utils/prisma";
+import { ensureFamilyTicketChannels } from "./familyTicketChannels";
 
 function toBigInt(id: string) {
 	return BigInt(id);
@@ -49,14 +48,6 @@ export function buildFamilyButtons(applicationId: bigint, showCallButton = true)
 	}
 
 	return row;
-}
-
-async function deleteUserTicketChannels(guild: any, username: string) {
-	const textChannel = guild.channels.cache.find((c: any) => c.name === `чат-${username}`);
-	const voiceChannel = guild.channels.cache.find((c: any) => c.name === `обзвон-${username}`);
-
-	if (textChannel) await textChannel.delete("Заявка принята/отклонена").catch(() => {});
-	if (voiceChannel) await voiceChannel.delete("Заявка принята/отклонена").catch(() => {});
 }
 
 function hasAnyRole(member: GuildMember, roleIds: string[]) {
@@ -247,23 +238,9 @@ export async function handleFamilyButtons(interaction: any) {
 		}
 
 		const username = member.user.username;
-		const categoryId = config.FAMILY_RECRUIT_CATEGORY_ID!;
-
-		const textChannel = await createPrivateChannel({
+		const { textChannel } = await ensureFamilyTicketChannels({
 			guild: interaction.guild,
-			name: `чат-${username}`,
-			type: ChannelType.GuildText,
-			categoryId,
-			userId,
-			clickedUserId: interaction.user.id,
-			roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1),
-		});
-
-		await createPrivateChannel({
-			guild: interaction.guild,
-			name: `обзвон-${username}`,
-			type: ChannelType.GuildVoice,
-			categoryId,
+			username,
 			userId,
 			clickedUserId: interaction.user.id,
 			roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1),
@@ -287,8 +264,9 @@ export async function handleFamilyButtons(interaction: any) {
 			components: [newComponents],
 		});
 
-		if (textChannel && textChannel.type === ChannelType.GuildText) {
-			await (textChannel as TextChannel).send({
+		let introSent = false;
+		if (textChannel) {
+			await textChannel.send({
 				content:
 					`<@${userId}> здравствуйте!\n\n` +
 					`Это ваш личный канал для рассмотрения заявки в семью.\n` +
@@ -296,7 +274,19 @@ export async function handleFamilyButtons(interaction: any) {
 					`Пожалуйста, ожидайте дальнейшей связи здесь или в голосовом канале обзвона.`,
 				embeds: [updatedEmbed],
 				components: [buildFamilyButtons(applicationId, false)],
+			}).then(() => {
+				introSent = true;
+			}).catch((error) => {
+				console.error("family call intro send error:", error);
 			});
+		}
+
+		if (!introSent) {
+			await member.send(
+				`<@${userId}> здравствуйте!\n\n` +
+				`Ваша заявка взята на обзвон пользователем <@${interaction.user.id}>.\n` +
+				`Если приватный канал не появился, напишите рекрутеру напрямую или повторно зайдите на сервер.`
+			).catch(() => {});
 		}
 
 		return;

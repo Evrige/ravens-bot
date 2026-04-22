@@ -26,6 +26,9 @@ export const CUSTOM_IDS = {
 	FAMILY_REASON_IN_FAMILY: "FAMILY_REASON_IN_FAMILY_",
 	MARKET_BUTTON: "market_buy_",
 	ROLE_BUY: "role_buy_",
+	MARKET_ORDER_TAKE: "market_order_take:",
+	MARKET_ORDER_COMPLETE: "market_order_complete:",
+	MARKET_ORDER_DECLINE: "market_order_decline:",
 
 
 	HIVE_SELECT_FAMILY: "hive_select_family",
@@ -56,6 +59,21 @@ export const CUSTOM_IDS = {
 	WEEKLY_FEE_PRICE_EDIT: "weekly_fee_price_edit",
 	WEEKLY_FEE_PRICE_MODAL: "weekly_fee_price_modal",
 	WEEKLY_FEE_PRICE_INPUT: "weekly_fee_price_input",
+	FAMILY_AFK_ENTER: "family_afk_enter",
+	FAMILY_AFK_LIST: "family_afk_list",
+	FAMILY_AFK_EXIT: "family_afk_exit",
+	FAMILY_AFK_MODAL: "family_afk_modal",
+	FAMILY_AFK_HOURS_INPUT: "family_afk_hours_input",
+	FAMILY_AFK_REASON_INPUT: "family_afk_reason_input",
+	FAMILY_IMPROVEMENT_REQUEST_SELECT: "family_improvement_request_select",
+	FAMILY_IMPROVEMENT_REQUEST_MODAL: "family_improvement_request_modal:",
+	FAMILY_IMPROVEMENT_NICKNAME_INPUT: "family_improvement_nickname_input",
+	FAMILY_IMPROVEMENT_REASON_INPUT: "family_improvement_reason_input",
+	FAMILY_IMPROVEMENT_ACCEPT: "family_improvement_accept:",
+	FAMILY_IMPROVEMENT_DECLINE: "family_improvement_decline:",
+	FAMILY_IMPROVEMENT_DECLINE_MODAL: "family_improvement_decline_modal:",
+	FAMILY_IMPROVEMENT_DECLINE_REASON_INPUT: "family_improvement_decline_reason_input",
+	GIVEAWAY_JOIN: "giveaway_join:",
 };
 
 export const CUSTOM_COMMAND = {
@@ -78,6 +96,7 @@ export const CUSTOM_COMMAND = {
 	BALANCE_CHECK: "balance-check",
 	MARKET: "market",
 	MARKET_ADD: "market-add",
+	MARKET_REMOVE: "market-remove",
 	MUTE: "mute",
 	BAN: "ban",
 	WARN: "warn",
@@ -89,4 +108,6 @@ export const CUSTOM_COMMAND = {
 	FEE_REMOVE: "fee-remove",
 	FEE_PANEL: "fee-panel",
 	FAMILY_PANEL: "family-panel-reset",
+	FAMILY_NAVIGATION: "navigation-panel",
+	GIVEAWAY: "giveaway",
 }

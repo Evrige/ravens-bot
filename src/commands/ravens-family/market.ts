@@ -1,4 +1,4 @@
-import {ChatInputCommandInteraction, PermissionFlagsBits, SlashCommandBuilder} from "discord.js";
+import {ChatInputCommandInteraction, PermissionFlagsBits, SlashCommandBuilder, TextChannel} from "discord.js";
 import { checkRolesOrReply } from "../../utils/checkRoles";
 import { FAMILY_OWNERS_ROLE_IDS } from "../../config/staff";
 import { CUSTOM_COMMAND } from "../../constants/customIds";
@@ -8,21 +8,20 @@ import {prisma} from "../../utils/prisma";
 export const marketCommand = {
 	data: new SlashCommandBuilder()
 		.setName(CUSTOM_COMMAND.MARKET)
-		.setDescription("Пересоздать сообщение магазина в канале"),
+		.setDescription("Создать или пересоздать сообщение магазина в текущем канале"),
 
 	async execute(interaction: ChatInputCommandInteraction) {
-		// ✅ сразу ACK
 		await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
-		// ✅ потом роли
 		if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
 
-		// ✅ принудительный репост
-		await updateMarket(interaction.client, true);
+		const channel = interaction.channel;
+		if (!channel || !channel.isTextBased()) {
+			return interaction.editReply("❌ Эту команду можно использовать только в текстовом канале.");
+		}
 
-		return interaction.editReply("✅ Магазин пересоздан.");
-		// если хочешь без ответа:
-		// await interaction.deleteReply().catch(() => {});
+		await updateMarket(interaction.client, channel as TextChannel, true);
+		return interaction.editReply("✅ Сообщение магазина обновлено.");
 	}
 };
 
@@ -42,6 +41,8 @@ export const marketAddCommand = {
 		.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
 	async execute(interaction: ChatInputCommandInteraction) {
+		await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
 		if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
 
 		const name = interaction.options.getString("name", true);
@@ -51,12 +52,51 @@ export const marketAddCommand = {
 			data: { name, price }
 		});
 
-		// ✅ сразу обновляем публичный магазин
 		await updateMarket(interaction.client);
 
-		await interaction.reply({
-			content: `✅ Товар **${newItem.name}** добавлен за ${price} монет.\n🛒 Магазин в канале обновлён.`,
-			ephemeral: true
+		return interaction.editReply(
+			`✅ Товар **${newItem.name}** добавлен за ${price} монет.\nСообщение магазина обновлено.`
+		);
+	}
+};
+
+export const marketRemoveCommand = {
+	data: new SlashCommandBuilder()
+		.setName(CUSTOM_COMMAND.MARKET_REMOVE)
+		.setDescription("Удалить товар из магазина")
+		.addStringOption(o =>
+			o.setName("name").setDescription("Точное название товара").setRequired(true)
+		)
+		.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+	async execute(interaction: ChatInputCommandInteraction) {
+		await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+		if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
+
+		const name = interaction.options.getString("name", true).trim();
+
+		const item = await prisma.market.findFirst({
+			where: { name }
 		});
+
+		if (!item) {
+			return interaction.editReply(`❌ Товар с названием **${name}** не найден.`);
+		}
+
+		await prisma.$transaction([
+			prisma.selling.deleteMany({
+				where: { marketId: item.id }
+			}),
+			prisma.market.delete({
+				where: { id: item.id }
+			})
+		]);
+
+		await updateMarket(interaction.client);
+
+		return interaction.editReply(
+			`✅ Товар **${item.name}** удалён из магазина.\nСообщение магазина обновлено.`
+		);
 	}
 };

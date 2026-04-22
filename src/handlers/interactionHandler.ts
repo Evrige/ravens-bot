@@ -30,7 +30,7 @@ import {
 	takeCommand,
 } from "../commands/ravens-family/balanceKeeper";
 import { handleMarketButtons } from "./market/handleMarketButtons";
-import { marketAddCommand, marketCommand } from "../commands/ravens-family/market";
+import { marketAddCommand, marketCommand, marketRemoveCommand } from "../commands/ravens-family/market";
 import { handleMarketModalSubmit } from "./market/handleMarketModalSubmit";
 import { profileCommand } from "../commands/ravens-family/profile";
 import { handleStaffListToggle } from "../services/updateStaffList";
@@ -58,6 +58,11 @@ import { recruitCommand } from "../commands/ravens-family/recruit";
 import { hivePayoutCommand } from "../commands/detectives/hive-payout";
 import {internshipCommand} from "../commands/detectives/internship";
 import {organisationsListCommand} from "../commands/detectives/organisations-list";
+import {navigationPanelCommand} from "../commands/ravens-family/navigation-panel";
+import { handleFamilyAfkUI } from "./handleFamilyAfkUI";
+import { giveawayCommand } from "../commands/ravens-family/giveaway";
+import { handleGiveawayUI } from "./handleGiveawayUI";
+import { handleFamilyImprovementUI } from "./handleFamilyImprovementUI";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -80,6 +85,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.BALANCE_CHECK]: balanceCheckCommand,
 	[CUSTOM_COMMAND.MARKET]: marketCommand,
 	[CUSTOM_COMMAND.MARKET_ADD]: marketAddCommand,
+	[CUSTOM_COMMAND.MARKET_REMOVE]: marketRemoveCommand,
 	[CUSTOM_COMMAND.PROFILE]: profileCommand,
 	[CUSTOM_COMMAND.DB_ORGANISATION_ADD]: organisationAddCommand,
 	[CUSTOM_COMMAND.DB_HIVE_STATS]: hiveStatsCommand,
@@ -88,6 +94,8 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.FEE_REMOVE]: weeklyFeeRemoveCommand,
 	[CUSTOM_COMMAND.FAMILY_PANEL]: familyPanelReset,
 	[CUSTOM_COMMAND.RECRUIT]: recruitCommand,
+	[CUSTOM_COMMAND.FAMILY_NAVIGATION]: navigationPanelCommand,
+	[CUSTOM_COMMAND.GIVEAWAY]: giveawayCommand,
 	[CUSTOM_COMMAND.DB_HIVE_PAYOUT]: hivePayoutCommand,
 	[CUSTOM_COMMAND.DB_INTERNSHIP]: internshipCommand,
 	[CUSTOM_COMMAND.DB_ORGANISATIONS_LIST]: organisationsListCommand,
@@ -105,6 +113,7 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		if (interaction.isStringSelectMenu()) {
+			if (await handleFamilyImprovementUI(interaction)) return;
 			await handleHiveSelectMenus(interaction);
 			return;
 		}
@@ -114,6 +123,9 @@ export async function handleInteractions(interaction: Interaction) {
 			if (await handleCreateCaseButton(interaction)) return;
 			if (await handleFamilyListPanelButtons(interaction)) return;
 			if (await handleDBButtons(interaction)) return;
+			if (await handleFamilyAfkUI(interaction)) return;
+			if (await handleFamilyImprovementUI(interaction)) return;
+			if (await handleGiveawayUI(interaction)) return;
 
 			// Остальные вызываем как обычные функции
 			await handleCaseButtons(interaction);
@@ -130,6 +142,8 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		if (interaction.isModalSubmit()) {
+			if (await handleFamilyAfkUI(interaction)) return;
+			if (await handleFamilyImprovementUI(interaction)) return;
 			await handleCreateCaseModal(interaction);
 			await handleCaseReplaceModal(interaction);
 			await handleDBSubmit(interaction);

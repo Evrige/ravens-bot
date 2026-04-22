@@ -159,6 +159,63 @@ model BotMessage {
   channelId String
 }
 
+model ImprovementRequest {
+  id            BigInt                   @id @default(autoincrement())
+  userId        String
+  requestKey    String
+  label         String
+  content       String
+  status        ImprovementRequestStatus @default(PENDING)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  reviewedAt    DateTime?
+  reviewedById  String?
+  declineReason String?
+  messageId     String?
+  channelId     String?
+  messageUrl    String?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AfkRecord {
+  id        BigInt          @id @default(autoincrement())
+  userId    String
+  reason    String
+  status    AfkRecordStatus @default(ACTIVE)
+  startedAt DateTime
+  endAt     DateTime
+  closedAt  DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, endAt])
+}
+
+model MarketOrder {
+  id           BigInt            @id @default(autoincrement())
+  sellingId    BigInt?           @unique
+  userId       String
+  marketId     BigInt?
+  marketName   String
+  marketPrice  Decimal
+  status       MarketOrderStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  takenById    String?
+  takenAt      DateTime?
+  resolvedById String?
+  resolvedAt   DateTime?
+  declineReason String?
+  logMessageId String?
+  logChannelId String?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
 enum Form {
   ONE_HALF    @map("1/2")
   ONE_QUARTER @map("1/4")
@@ -174,4 +231,23 @@ enum HiveStatus {
   PENDING
   ACCEPTED
   REJECTED
+}
+
+enum ImprovementRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum AfkRecordStatus {
+  ACTIVE
+  ENDED
+  EXPIRED
+}
+
+enum MarketOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  DECLINED
 }

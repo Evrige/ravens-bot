@@ -1,11 +1,10 @@
-import { Client, TextChannel, ButtonStyle, MessageFlags } from "discord.js";
+import { ButtonStyle, Client, MessageFlags, TextChannel } from "discord.js";
 import { prisma } from "../utils/prisma";
-import { config } from "../config/env";
 
 const V2 = { Container: 17, Section: 9, TextDisplay: 10, Separator: 14, Button: 2 } as const;
 
 function buildMarketV2(items: Array<{ id: bigint; name: string; price: any }>) {
-	const pageItems = items.slice(0, 5);
+	const pageItems = items.slice(0, 10);
 
 	const container: any = {
 		type: V2.Container,
@@ -26,7 +25,7 @@ function buildMarketV2(items: Array<{ id: bigint; name: string; price: any }>) {
 
 		container.components.push({
 			type: V2.Section,
-			components: [{ type: V2.TextDisplay, content: `🏷️  **${item.name}**` }],
+			components: [{ type: V2.TextDisplay, content: `🏷️ **${item.name}**` }],
 			accessory: {
 				type: V2.Button,
 				style: ButtonStyle.Success,
@@ -35,15 +34,23 @@ function buildMarketV2(items: Array<{ id: bigint; name: string; price: any }>) {
 			}
 		});
 
-		if (i !== pageItems.length - 1) container.components.push({ type: V2.Separator });
+		if (i !== pageItems.length - 1) {
+			container.components.push({ type: V2.Separator });
+		}
 	}
 
-	container.components.push(
-		{ type: V2.Separator },
-		{ type: V2.TextDisplay, content: `*Страница 1/1 • Показано: ${pageItems.length} • Всего: ${items.length}*` }
-	);
-
 	return container;
+}
+
+async function resolveTargetChannel(client: Client, channel?: TextChannel) {
+	if (channel) return channel;
+
+	const botMsg = await prisma.botMessage.findUnique({ where: { type: "market_embed" } });
+	if (!botMsg) return null;
+
+	const fetchedChannel = await client.channels.fetch(botMsg.channelId).catch(() => null);
+	if (!fetchedChannel || !fetchedChannel.isTextBased()) return null;
+	return fetchedChannel as TextChannel;
 }
 
 async function safeDeleteMessage(channel: TextChannel, messageId: string) {
@@ -51,20 +58,13 @@ async function safeDeleteMessage(channel: TextChannel, messageId: string) {
 		const msg = await channel.messages.fetch(messageId);
 		await msg.delete().catch(() => {});
 	} catch (err: any) {
-		// 10008 = Unknown Message (уже удалили) — игнорим
 		if (err?.code !== 10008) console.warn("market delete failed:", err);
 	}
 }
 
-/**
- * @param forceRepost если true -> всегда удаляет старое сообщение и шлёт новое
- */
-export async function updateMarket(client: Client, forceRepost = false) {
-	const guild = client.guilds.cache.get(config.FAMILY_SERVER_GUID!);
-	if (!guild) return;
-
-	const channel = guild.channels.cache.get(config.FAMILY_MARKET_CHANNEL_ID!) as TextChannel;
-	if (!channel) return;
+export async function updateMarket(client: Client, channel?: TextChannel, forceRepost = false) {
+	const targetChannel = await resolveTargetChannel(client, channel);
+	if (!targetChannel) return;
 
 	const items = await prisma.market.findMany({ orderBy: { id: "asc" } });
 	const container = buildMarketV2(items as any);
@@ -74,32 +74,24 @@ export async function updateMarket(client: Client, forceRepost = false) {
 
 	const botMsg = await prisma.botMessage.findUnique({ where: { type: "market_embed" } });
 
-	// ✅ если команда попросила пересоздать — удаляем старое (если есть) и создаём новое
 	if (forceRepost) {
-		if (botMsg && botMsg.channelId === channel.id) {
-			await safeDeleteMessage(channel, botMsg.messageId);
+		if (botMsg && botMsg.channelId === targetChannel.id) {
+			await safeDeleteMessage(targetChannel, botMsg.messageId);
 		}
 
-		const newMsg = await channel.send(payloadSend);
+		const newMsg = await targetChannel.send(payloadSend);
 
-		if (botMsg) {
-			await prisma.botMessage.update({
-				where: { type: "market_embed" },
-				data: { messageId: newMsg.id, channelId: channel.id }
-			});
-		} else {
-			await prisma.botMessage.create({
-				data: { type: "market_embed", messageId: newMsg.id, channelId: channel.id }
-			});
-		}
-
+		await prisma.botMessage.upsert({
+			where: { type: "market_embed" },
+			update: { messageId: newMsg.id, channelId: targetChannel.id },
+			create: { type: "market_embed", messageId: newMsg.id, channelId: targetChannel.id }
+		});
 		return;
 	}
 
-	// ✅ обычный режим (апдейтер): пытаемся edit, при ошибке — пересоздаём
-	if (botMsg && botMsg.channelId === channel.id) {
+	if (botMsg && botMsg.channelId === targetChannel.id) {
 		try {
-			const msg = await channel.messages.fetch(botMsg.messageId);
+			const msg = await targetChannel.messages.fetch(botMsg.messageId);
 			await msg.edit(payloadEdit);
 			return;
 		} catch (err: any) {
@@ -109,17 +101,11 @@ export async function updateMarket(client: Client, forceRepost = false) {
 		}
 	}
 
-	// пересоздаём, если нет записи или сообщение потеряно
-	const newMsg = await channel.send(payloadSend);
+	const newMsg = await targetChannel.send(payloadSend);
 
-	if (botMsg) {
-		await prisma.botMessage.update({
-			where: { type: "market_embed" },
-			data: { messageId: newMsg.id, channelId: channel.id }
-		});
-	} else {
-		await prisma.botMessage.create({
-			data: { type: "market_embed", messageId: newMsg.id, channelId: channel.id }
-		});
-	}
+	await prisma.botMessage.upsert({
+		where: { type: "market_embed" },
+		update: { messageId: newMsg.id, channelId: targetChannel.id },
+		create: { type: "market_embed", messageId: newMsg.id, channelId: targetChannel.id }
+	});
 }
