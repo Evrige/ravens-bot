@@ -6,10 +6,11 @@ import {
 	TextChannel,
 	NewsChannel,
 	ThreadChannel,
-	DMChannel
+	DMChannel,
+	EmbedBuilder,
+	AttachmentBuilder
 } from "discord.js";
 
-// Тип каналов, где точно есть send()
 type TextSendable = TextChannel | NewsChannel | ThreadChannel | DMChannel;
 
 export async function applicationButton(
@@ -21,13 +22,23 @@ export async function applicationButton(
 	const button = new ButtonBuilder()
 		.setCustomId(buttonId)
 		.setLabel(buttonLabel)
-		.setStyle(ButtonStyle.Danger);
+		.setStyle(ButtonStyle.Secondary); // ← СЕРАЯ кнопка
 
 	const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 
 	const channel = interaction.channel;
 
-	// Явная проверка типов каналов
+	const file = new AttachmentBuilder(image, { name: "logo.png" });
+
+	const embed = new EmbedBuilder()
+		.setColor("#2b2d31") // цвет как у дискорда (тёмный)
+		.setDescription(
+			`👋 **ПУТЬ В СЕМЬЮ НАЧИНАЕТСЯ ЗДЕСЬ!**\n\n` +
+			`📋 Обычно заявки обрабатываются в течение **1–3 дней** —\n` +
+			`всё зависит от загрузки рекрутеров.`
+		)
+		.setImage("attachment://logo.png");
+
 	if (
 		channel instanceof TextChannel ||
 		channel instanceof NewsChannel ||
@@ -35,8 +46,8 @@ export async function applicationButton(
 		channel instanceof DMChannel
 	) {
 		await (channel as TextSendable).send({
-			content: " ", // хотя бы пробел
-			files: [image],
+			embeds: [embed],
+			files: [file],
 			components: [row]
 		});
 	}

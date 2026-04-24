@@ -16,6 +16,7 @@ import {
 	ImprovementRequestKey,
 } from "../config/familyImprovementSystem";
 import { CUSTOM_IDS } from "../constants/customIds";
+import path from "path";
 
 const INFO_TYPE = "family_improvement_info_panel";
 const REQUEST_TYPE = "family_improvement_request_panel";
@@ -29,8 +30,8 @@ const V2 = {
 	Button: 2,
 } as const;
 
-const LOGO_FILE_NAME = "ravens-logo.png";
-const LOGO_FILE_PATH = "C:\\Users\\artur\\WebstormProjects\\ravens-bot\\assets\\ravens-logo.png";
+const LOGO_FILE_NAME = "londo.png";
+const LOGO_FILE_PATH = path.join(process.cwd(), "assets", "londo.png");
 
 function buildInfoPanel() {
 	const rankLines = FAMILY_HIERARCHY_ENTRIES.map((entry, index) =>
@@ -49,13 +50,13 @@ function buildInfoPanel() {
 				components: [
 					{
 						type: V2.TextDisplay,
-						content: "## RAVENS - Иерархия\nСистема рангов и должностей семьи Ravens.",
+						content: "## Londo - Иерархия\nСистема рангов и должностей семьи Londo.",
 					},
 				],
 				accessory: {
 					type: V2.Thumbnail,
 					media: { url: `attachment://${LOGO_FILE_NAME}` },
-					description: "Ravens logo",
+					description: "Londo logo",
 				},
 			},
 			{ type: V2.Separator },
@@ -98,7 +99,7 @@ function buildRequestPanel() {
 		components: [
 			{
 				type: V2.TextDisplay,
-				content: "## Система повышений Ravens",
+				content: "## Система повышений Londo",
 			},
 			{
 				type: V2.TextDisplay,

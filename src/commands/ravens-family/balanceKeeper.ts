@@ -1,8 +1,10 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
+import { ChatInputCommandInteraction, Colors, EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import { checkRolesOrReply } from "../../utils/checkRoles";
 import {FAMILY_OWNERS_ROLE_IDS} from "../../config/staff";
 import {CUSTOM_COMMAND} from "../../constants/customIds";
+import { formatCoins } from "../../utils/formatters";
+import { sendFamilyAuditCustomEmbed } from "../../services/startFamilyAuditLogger";
 
 // balance
 export const balanceCommand = {
@@ -34,7 +36,7 @@ export const balanceCommand = {
 
 			// Проверка, был ли уже ответ
 			if (!interaction.replied && !interaction.deferred) {
-				await interaction.reply({ content: "Ошибка при получении баланса", ephemeral: true });
+				await interaction.reply({ content: "Ошибка при получении баланса", flags: MessageFlags.Ephemeral });
 			} else {
 				await interaction.editReply("Ошибка при получении баланса");
 			}
@@ -74,9 +76,22 @@ export const giveCommand = {
 
 		const newBalance = (user.balance as any).toNumber();
 
+		const embed = new EmbedBuilder()
+			.setTitle("Выданы монеты")
+			.setColor(Colors.Green)
+			.addFields(
+				{ name: "Исполнитель", value: `<@${interaction.user.id}>`, inline: true },
+				{ name: "Получатель", value: `<@${target.id}>`, inline: true },
+				{ name: "Сумма", value: `${formatCoins(amount)} 🪙`, inline: true },
+				{ name: "Новый баланс", value: `${formatCoins(newBalance)} 🪙`, inline: true },
+			)
+			.setTimestamp();
+
+		await sendFamilyAuditCustomEmbed(interaction.client, "balance", embed).catch(() => {});
+
 		await interaction.reply({
 			content: `✅ Выдали ${amount} монет пользователю <@${target.id}>. Новый баланс: ${newBalance.toFixed(2)} монет`,
-			ephemeral: true
+			flags: MessageFlags.Ephemeral
 		});
 	}
 };
@@ -107,7 +122,23 @@ export const takeCommand = {
 			data: { balance: newBalance }
 		});
 
-		await interaction.reply(`✅ Забрали ${actualTaken} монет у <@${target.id}>. Новый баланс: ${(updatedUser.balance as any).toNumber().toFixed(2)} монет`);
+		const embed = new EmbedBuilder()
+			.setTitle("Сняты монеты")
+			.setColor(Colors.Red)
+			.addFields(
+				{ name: "Исполнитель", value: `<@${interaction.user.id}>`, inline: true },
+				{ name: "Получатель", value: `<@${target.id}>`, inline: true },
+				{ name: "Снято", value: `${formatCoins(actualTaken)} 🪙`, inline: true },
+				{ name: "Новый баланс", value: `${formatCoins(updatedUser.balance)} 🪙`, inline: true },
+			)
+			.setTimestamp();
+
+		await sendFamilyAuditCustomEmbed(interaction.client, "balance", embed).catch(() => {});
+
+		await interaction.reply({
+			content: `✅ Забрали ${actualTaken} монет у <@${target.id}>. Новый баланс: ${(updatedUser.balance as any).toNumber().toFixed(2)} монет`,
+			flags: MessageFlags.Ephemeral,
+		});
 	}
 };
 
@@ -123,9 +154,9 @@ export const balanceCheckCommand = {
 		const target = interaction.options.getUser("user", true);
 		const user = await prisma.user.findUnique({ where: { id: target.id } });
 
-		if (!user) return interaction.reply({ content: "Пользователь не найден в базе.", ephemeral: true });
+		if (!user) return interaction.reply({ content: "Пользователь не найден в базе.", flags: MessageFlags.Ephemeral });
 
 		const balance = (user.balance as any).toNumber();
-		await interaction.reply({ content: `💰 Баланс <@${target.id}>: ${balance.toFixed(2)} монет`, ephemeral: true });
+		await interaction.reply({ content: `💰 Баланс <@${target.id}>: ${balance.toFixed(2)} монет`, flags: MessageFlags.Ephemeral });
 	}
 };

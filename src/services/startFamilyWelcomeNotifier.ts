@@ -15,9 +15,11 @@ const V2 = {
 	Separator: 14,
 } as const;
 
+import path from "path";
+
 const SERVER_NAME = "LONDO";
 const WELCOME_FILE_NAME = "londo.png";
-const WELCOME_FILE_PATH = "C:\\Users\\artur\\WebstormProjects\\ravens-bot\\assets\\londo.png";
+const WELCOME_FILE_PATH = path.join(process.cwd(), "assets", "londo.png");
 
 function formatWelcomeTime(date = new Date()) {
 	return new Intl.DateTimeFormat("ru-RU", {

@@ -87,7 +87,7 @@ function buildLeaderboardPanel(options: {
 	return {
 		type: V2.Container,
 		components: [
-			{ type: V2.TextDisplay, content: "## Лидерборд Ravens" },
+			{ type: V2.TextDisplay, content: "## Лидерборд Londo" },
 			{
 				type: V2.TextDisplay,
 				content: "Топ участников семьи по количеству коинов и времени в голосовых каналах.",

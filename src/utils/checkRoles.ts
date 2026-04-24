@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction } from "discord.js";
+import { ChatInputCommandInteraction, MessageFlags } from "discord.js";
 
 /**
  * Проверяет, есть ли у пользователя хотя бы одна из нужных ролей.
@@ -16,15 +16,15 @@ export function hasAllowedRole(interaction: ChatInputCommandInteraction, allowed
  */
 export async function checkRolesOrReply(interaction: ChatInputCommandInteraction, allowedRoles: string[]): Promise<boolean> {
 	if (!hasAllowedRole(interaction, allowedRoles)) {
-		const payload = {
-			content: "❌ У тебя нет прав на использование этой команды",
-			ephemeral: true
-		};
-
 		if (interaction.deferred || interaction.replied) {
-			await interaction.editReply(payload).catch(() => null);
+			await interaction.editReply({
+				content: "❌ У тебя нет прав на использование этой команды",
+			}).catch(() => null);
 		} else {
-			await interaction.reply(payload).catch(() => null);
+			await interaction.reply({
+				content: "❌ У тебя нет прав на использование этой команды",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => null);
 		}
 		return false;
 	}

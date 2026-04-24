@@ -20,7 +20,6 @@ import { CHANNEL_IDS } from "../config/channels";
 import {
 	FAMILY_HIGH_ROLE_IDS,
 	FAMILY_RECRUIT_ROLE_IDS,
-	FAMILY_STAFF_LIST_ROLE_IDS,
 } from "../config/staff";
 import {
 	acceptImprovementRequest,
@@ -47,21 +46,47 @@ function hasImprovementAccess(interaction: Interaction) {
 	return FAMILY_HIGH_ROLE_IDS.some((roleId) => roleCache.has(roleId));
 }
 
-function getTargetRoleId(requestKey: ImprovementRequestKey) {
-	const roleIndexByRequest: Record<ImprovementRequestKey, number> = {
-		young_ravens: 2,
-		ravens: 3,
-		main: 4,
-		maecenas: 5,
-		recruit: 6,
-	};
+const ROLE_NAME_ALIASES: Record<ImprovementRequestKey | "newbie" | "plum", string[]> = {
+	young_londo: ["Young Ravens", "Young Londo"],
+	londo: ["Ravens", "Londo"],
+	main: ["Main"],
+	maecenas: ["Maecenas"],
+	recruit: ["Recruit"],
+	newbie: ["Newbie"],
+	plum: ["Plum"],
+};
 
-	const roleIndex = roleIndexByRequest[requestKey];
-	return FAMILY_STAFF_LIST_ROLE_IDS[roleIndex] ?? null;
+function findRoleIdByAliases(interaction: Interaction, aliases: string[]) {
+	const guild = interaction.guild;
+	if (!guild) return null;
+
+	const normalizedAliases = aliases.map((name) => name.trim().toLowerCase());
+	const role = guild.roles.cache.find((entry) =>
+		normalizedAliases.includes(entry.name.trim().toLowerCase())
+	);
+
+	return role?.id ?? null;
 }
 
-function getHierarchyRoleIds() {
-	return FAMILY_STAFF_LIST_ROLE_IDS.slice(0, 5).filter(Boolean);
+function getTargetRoleId(interaction: Interaction, requestKey: ImprovementRequestKey) {
+	const aliases = ROLE_NAME_ALIASES[requestKey];
+	if (!aliases?.length) return null;
+
+	return findRoleIdByAliases(interaction, aliases);
+}
+
+function getHierarchyRoleIds(interaction: Interaction) {
+	const keys: Array<"newbie" | "plum" | ImprovementRequestKey> = [
+		"newbie",
+		"plum",
+		"young_londo",
+		"londo",
+		"main",
+	];
+
+	return keys
+		.map((key) => findRoleIdByAliases(interaction, ROLE_NAME_ALIASES[key]))
+		.filter((roleId): roleId is string => Boolean(roleId));
 }
 
 function buildDecisionButtons(
@@ -135,7 +160,7 @@ function buildUpdatedEmbeds(options: {
 			value: options.reason,
 			inline: false,
 		});
-	}
+	};
 
 	return [nextInfoEmbed, nextRequestEmbed];
 }
@@ -208,7 +233,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			}
 			const requestKey = requestKeyRaw as ImprovementRequestKey;
 			const applicationId = BigInt(applicationIdRaw);
-			const roleId = getTargetRoleId(requestKey);
+			const roleId = getTargetRoleId(interaction, requestKey);
 
 			if (!roleId) {
 				await interaction.reply({
@@ -237,7 +262,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			}
 
 			if (!isPositionRequest(requestKey) && requestKey !== "maecenas") {
-				const hierarchyRoles = getHierarchyRoleIds().filter((id) => member.roles.cache.has(id));
+				const hierarchyRoles = getHierarchyRoleIds(interaction).filter((id) => member.roles.cache.has(id));
 				if (hierarchyRoles.length) {
 					await member.roles.remove(hierarchyRoles).catch(() => {});
 				}

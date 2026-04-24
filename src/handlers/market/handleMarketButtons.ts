@@ -5,11 +5,17 @@ import {
 	ButtonStyle,
 	EmbedBuilder,
 	MessageFlags,
+	ModalBuilder,
+	TextInputBuilder,
+	TextInputStyle,
 } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import { CUSTOM_IDS } from "../../constants/customIds";
 import { CHANNEL_IDS } from "../../config/channels";
 import { FAMILY_HIGH_ROLE_IDS, FAMILY_OWNERS_ROLE_IDS } from "../../config/staff";
+import { updateMarket } from "../../services/updateMarket";
+import { upsertMarketAdminPanel } from "../../services/upsertMarketAdminPanel";
+import { getMarketSettings, mutateMarketSettings } from "../../utils/marketSettingsStore";
 import {
 	completeMarketOrder,
 	createMarketOrder,
@@ -27,6 +33,65 @@ function hasMarketOrderAccess(interaction: ButtonInteraction) {
 	if (!roleCache) return false;
 
 	return [...FAMILY_HIGH_ROLE_IDS, ...FAMILY_OWNERS_ROLE_IDS].some((roleId) => roleCache.has(roleId));
+}
+
+function hasMarketManageAccess(interaction: ButtonInteraction) {
+	const roleCache = (interaction.member as any)?.roles?.cache;
+	if (!roleCache) return false;
+
+	return FAMILY_OWNERS_ROLE_IDS.some((roleId) => roleCache.has(roleId));
+}
+
+function buildAddMarketModal() {
+	const modal = new ModalBuilder()
+		.setCustomId(CUSTOM_IDS.MARKET_MODAL_ADD)
+		.setTitle("Добавить товар");
+
+	const nameInput = new TextInputBuilder()
+		.setCustomId(CUSTOM_IDS.MARKET_MODAL_NAME)
+		.setLabel("Название товара")
+		.setStyle(TextInputStyle.Short)
+		.setRequired(true);
+
+	const priceInput = new TextInputBuilder()
+		.setCustomId(CUSTOM_IDS.MARKET_MODAL_PRICE)
+		.setLabel("Цена")
+		.setStyle(TextInputStyle.Short)
+		.setRequired(true);
+
+	modal.addComponents(
+		new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
+		new ActionRowBuilder<TextInputBuilder>().addComponents(priceInput),
+	);
+
+	return modal;
+}
+
+function buildEditMarketModal(item: { id: bigint; name: string; price: unknown }) {
+	const modal = new ModalBuilder()
+		.setCustomId(`${CUSTOM_IDS.MARKET_MODAL_EDIT_ITEM}${item.id.toString()}`)
+		.setTitle("Изменить товар");
+
+	const nameInput = new TextInputBuilder()
+		.setCustomId(CUSTOM_IDS.MARKET_MODAL_NAME)
+		.setLabel("Название товара / DELETE")
+		.setStyle(TextInputStyle.Short)
+		.setValue(item.name)
+		.setRequired(true);
+
+	const priceInput = new TextInputBuilder()
+		.setCustomId(CUSTOM_IDS.MARKET_MODAL_PRICE)
+		.setLabel("Цена")
+		.setStyle(TextInputStyle.Short)
+		.setValue(decimalToNumber(item.price).toString())
+		.setRequired(true);
+
+	modal.addComponents(
+		new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput),
+		new ActionRowBuilder<TextInputBuilder>().addComponents(priceInput),
+	);
+
+	return modal;
 }
 
 function buildOrderButtons(order: MarketOrderRecord, disabled = false) {
@@ -132,6 +197,11 @@ async function handleTakeOrder(interaction: ButtonInteraction, orderId: bigint) 
 	return true;
 }
 
+async function refreshMarketPanels(client: ButtonInteraction["client"]) {
+	await updateMarket(client).catch(() => {});
+	await upsertMarketAdminPanel(client).catch(() => {});
+}
+
 async function handleResolveOrder(interaction: ButtonInteraction, orderId: bigint, completed: boolean) {
 	if (!hasMarketOrderAccess(interaction)) {
 		await interaction.reply({
@@ -184,6 +254,78 @@ async function handleResolveOrder(interaction: ButtonInteraction, orderId: bigin
 }
 
 export async function handleMarketButtons(interaction: ButtonInteraction) {
+	if (interaction.customId === CUSTOM_IDS.MARKET_TOGGLE_STATE) {
+		if (!hasMarketManageAccess(interaction)) {
+			await interaction.reply({
+				content: "❌ Управлять магазином могут только владельцы.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+		const settings = await mutateMarketSettings((state) => {
+			state.isOpen = !state.isOpen;
+			return { ...state };
+		});
+
+		await refreshMarketPanels(interaction.client);
+		await interaction.editReply(
+			settings.isOpen
+				? "✅ Магазин открыт. Покупки снова доступны."
+				: "✅ Магазин закрыт. Кнопки покупки отключены."
+		).catch(() => {});
+		return true;
+	}
+
+	if (interaction.customId === CUSTOM_IDS.MARKET_MANAGE_ADD) {
+		if (!hasMarketManageAccess(interaction)) {
+			await interaction.reply({
+				content: "❌ Управлять товарами могут только владельцы.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		await interaction.showModal(buildAddMarketModal()).catch(() => {});
+		return true;
+	}
+
+	if (interaction.customId.startsWith(CUSTOM_IDS.MARKET_MANAGE_EDIT_ITEM)) {
+		if (!hasMarketManageAccess(interaction)) {
+			await interaction.reply({
+				content: "❌ Управлять товарами могут только владельцы.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		const itemIdRaw = interaction.customId.slice(CUSTOM_IDS.MARKET_MANAGE_EDIT_ITEM.length);
+		let itemId: bigint;
+		try {
+			itemId = BigInt(itemIdRaw);
+		} catch {
+			await interaction.reply({
+				content: "❌ Некорректный ID товара.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		const item = await prisma.market.findUnique({ where: { id: itemId } });
+		if (!item) {
+			await interaction.reply({
+				content: "❌ Товар не найден.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		await interaction.showModal(buildEditMarketModal(item)).catch(() => {});
+		return true;
+	}
+
 	if (interaction.customId.startsWith(CUSTOM_IDS.MARKET_ORDER_TAKE)) {
 		const orderId = BigInt(interaction.customId.replace(CUSTOM_IDS.MARKET_ORDER_TAKE, ""));
 		return handleTakeOrder(interaction, orderId);
@@ -216,6 +358,13 @@ export async function handleMarketButtons(interaction: ButtonInteraction) {
 	if (!interaction.customId.startsWith(CUSTOM_IDS.MARKET_BUTTON)) return;
 
 	await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+	const settings = await getMarketSettings();
+	if (!settings.isOpen) {
+		return interaction.editReply({
+			content: "❌ Магазин сейчас закрыт. Покупка временно недоступна.",
+		});
+	}
 
 	const itemId = BigInt(interaction.customId.replace(CUSTOM_IDS.MARKET_BUTTON, ""));
 	const item = await prisma.market.findUnique({ where: { id: itemId } });

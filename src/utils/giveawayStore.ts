@@ -9,6 +9,7 @@ export interface GiveawayRecord {
 	messageId: string;
 	creatorId: string;
 	prize: string;
+	imageUrl: string | null;
 	description: string | null;
 	winnersCount: number;
 	endAt: string;

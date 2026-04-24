@@ -1,8 +1,10 @@
-import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import { CUSTOM_COMMAND } from "../../constants/customIds";
 import {FAMILY_OWNERS_ROLE_IDS} from "../../config/staff";
 import {checkRolesOrReply} from "../../utils/checkRoles";
+import { config } from "../../config/env";
+import { buildRecruitStatsEmbed } from "../../services/recruitStats";
 
 export const recruitStatsCommand = {
 	data: new SlashCommandBuilder()
@@ -16,40 +18,16 @@ export const recruitStatsCommand = {
 			// Проверка ролей
 			if (!(await checkRolesOrReply(interaction, FAMILY_OWNERS_ROLE_IDS))) return;
 
-			const generateEmbed = async () => {
-				const applications = await prisma.application.findMany({
-					where: { recruitId: { not: null } },
-					select: { recruitId: true, isAccepted: true }
-				});
+			const guild =
+				interaction.guild ??
+				(await interaction.client.guilds.fetch(config.FAMILY_SERVER_GUID).catch(() => null));
 
-				const counts: Record<string, { accepted: number; total: number }> = {};
+			if (!guild) {
+				await interaction.editReply("❌ Не удалось получить сервер для подсчёта статистики.");
+				return;
+			}
 
-				applications.forEach(a => {
-					if (!a.recruitId) return;
-					if (!counts[a.recruitId]) counts[a.recruitId] = { accepted: 0, total: 0 };
-					counts[a.recruitId].total += 1;
-					if (a.isAccepted) counts[a.recruitId].accepted += 1;
-				});
-
-				const stats = Object.entries(counts)
-					.sort((a, b) => b[1].accepted - a[1].accepted)
-					.slice(0, 50);
-
-				const description = stats.length
-					? stats.map(
-						([id, c]) => `<@${id}> — Принято заявок: ${c.accepted}, Отклонено: ${c.total - c.accepted}. Всего: ${c.total}`
-					).join("\n")
-					: "Пока нет заявок.";
-
-				return new EmbedBuilder()
-					.setTitle("📊 Статистика рекрутеров")
-					.setColor("Blue")
-					.setDescription(description)
-					.setFooter({ text: "Обновляется каждые 4 часа • by Evri" })
-					.setTimestamp();
-			};
-
-			const embed = await generateEmbed();
+			const embed = await buildRecruitStatsEmbed(guild);
 			const msg = await interaction.editReply({ embeds: [embed] });
 
 			// 🔥 Сохраняем messageId + channelId в БД

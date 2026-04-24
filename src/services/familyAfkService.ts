@@ -1,4 +1,4 @@
-import { Client } from "discord.js";
+import { Client, Colors, EmbedBuilder } from "discord.js";
 import { config } from "../config/env";
 import {
 	createAfkRecord,
@@ -11,11 +11,34 @@ import {
 import { getFamilyAfkLogsThread } from "./upsertFamilyAfkPanel";
 import { formatDateTime } from "../utils/formatters";
 
-async function logAfkAction(client: Client, message: string) {
+async function logAfkAction(client: Client, options: {
+	title: string;
+	color: number;
+	userId: string;
+	reason: string;
+	endAt?: Date | string | null;
+}) {
 	const thread = await getFamilyAfkLogsThread(client);
 	if (!thread) return;
 
-	await thread.send(message).catch(() => {});
+	const embed = new EmbedBuilder()
+		.setTitle(options.title)
+		.setColor(options.color)
+		.addFields(
+			{ name: "Участник", value: `<@${options.userId}>`, inline: true },
+			{ name: "Причина", value: options.reason, inline: false },
+		)
+		.setTimestamp();
+
+	if (options.endAt) {
+		embed.addFields({
+			name: "До",
+			value: formatDateTime(options.endAt),
+			inline: true,
+		});
+	}
+
+	await thread.send({ embeds: [embed] }).catch(() => {});
 }
 
 async function updateAfkRole(client: Client, userId: string, shouldHaveRole: boolean) {
@@ -67,7 +90,13 @@ export async function startAfk(client: Client, input: {
 	await updateAfkRole(client, input.userId, true);
 	await logAfkAction(
 		client,
-		`🛌 AFK начат: <@${input.userId}> | До: ${formatDateTime(record.endAt)} | Причина: ${record.reason}`
+		{
+			title: "AFK начат",
+			color: Colors.Blurple,
+			userId: input.userId,
+			reason: record.reason,
+			endAt: record.endAt,
+		}
 	);
 
 	return { ok: true as const, record };
@@ -80,7 +109,12 @@ export async function endAfk(client: Client, userId: string) {
 	await updateAfkRole(client, userId, false);
 	await logAfkAction(
 		client,
-		`✅ AFK завершён вручную: <@${userId}> | Причина: ${record.reason}`
+		{
+			title: "AFK завершён вручную",
+			color: Colors.Green,
+			userId,
+			reason: record.reason,
+		}
 	);
 
 	return record;
@@ -92,7 +126,13 @@ export async function expireAfk(client: Client) {
 		await updateAfkRole(client, record.userId, false);
 		await logAfkAction(
 			client,
-			`⏰ AFK завершён автоматически: <@${record.userId}> | Причина: ${record.reason} | До: ${formatDateTime(record.endAt)}`
+			{
+				title: "AFK завершён автоматически",
+				color: Colors.Orange,
+				userId: record.userId,
+				reason: record.reason,
+				endAt: record.endAt,
+			}
 		);
 	}
 

@@ -1,6 +1,7 @@
 import { prisma } from "../utils/prisma";
-import { EmbedBuilder } from "discord.js";
 import {client} from "../index";
+import { config } from "../config/env";
+import { buildRecruitStatsEmbed } from "./recruitStats";
 
 export async function startRecruitStatsUpdater() {
 	const data = await prisma.botMessage.findUnique({ where: { type: "recruit_stats" } });
@@ -12,38 +13,11 @@ export async function startRecruitStatsUpdater() {
 	const message = await channel.messages.fetch(data.messageId).catch(() => null);
 	if (!message) return;
 
-	const generateEmbed = async () => {
-		const applications = await prisma.application.findMany({
-			where: { recruitId: { not: null } },
-			select: { recruitId: true, isAccepted: true }
-		});
-
-		const counts: Record<string, { accepted: number; total: number }> = {};
-		applications.forEach(a => {
-			if (!a.recruitId) return;
-			if (!counts[a.recruitId]) counts[a.recruitId] = { accepted: 0, total: 0 };
-			counts[a.recruitId].total += 1;
-			if (a.isAccepted) counts[a.recruitId].accepted += 1;
-		});
-
-		const stats = Object.entries(counts)
-			.sort((a, b) => b[1].accepted - a[1].accepted)
-			.slice(0, 50);
-
-		const description = stats.length
-			? stats.map(([id, c]) => `<@${id}> — Принято заявок: ${c.accepted}, Отклонено: ${c.total - c.accepted}. Всего: ${c.total}`).join("\n")
-			: "Пока нет заявок.";
-
-		return new EmbedBuilder()
-			.setTitle("📊 Статистика рекрутеров")
-			.setColor("Blue")
-			.setDescription(description)
-			.setFooter({ text: "Обновляется каждые 4 часа • by Evri" })
-			.setTimestamp();
-	};
-
 	const update = async () => {
-		const embed = await generateEmbed();
+		const guild = await client.guilds.fetch(config.FAMILY_SERVER_GUID).catch(() => null);
+		if (!guild) return;
+
+		const embed = await buildRecruitStatsEmbed(guild);
 		await message.edit({ embeds: [embed] }).catch(() => {});
 	};
 

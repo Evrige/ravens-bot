@@ -33,7 +33,7 @@ import {startTwitchChecker} from "./services/twitchChecker";
 import {streamerRemoveCommand} from "./commands/ravens-family/streamer-remove";
 import {balanceCheckCommand, balanceCommand, giveCommand, takeCommand} from "./commands/ravens-family/balanceKeeper";
 import {startMarketUpdater} from "./services/startMarketUpdater";
-import {marketAddCommand, marketCommand, marketRemoveCommand} from "./commands/ravens-family/market";
+import {marketCommand} from "./commands/ravens-family/market";
 import {profileCommand} from "./commands/ravens-family/profile";
 import {initMessageTracker} from "./services/messageTracker";
 import {startStaffListUpdater} from "./services/startStaffListUpdater";
@@ -60,10 +60,17 @@ import {startFamilyEventsPanelUpdater} from "./services/startFamilyEventsPanelUp
 import {upsertFamilyAfkPanel} from "./services/upsertFamilyAfkPanel";
 import { giveawayCommand } from "./commands/ravens-family/giveaway";
 import { startGiveawayWatcher } from "./services/startGiveawayWatcher";
+import { upsertGiveawayPanel } from "./services/upsertGiveawayPanel";
 import { upsertFamilyImprovementPanels } from "./services/upsertFamilyImprovementPanels";
 import { startFamilyLeaderboardUpdater } from "./services/startFamilyLeaderboardUpdater";
 import { startFamilyAfkWatcher } from "./services/startFamilyAfkWatcher";
 import { startMarketOrdersPanelUpdater } from "./services/startMarketOrdersPanelUpdater";
+import { gamesCommand } from "./commands/ravens-family/games";
+import { startFamilyGamesUpdater } from "./services/startFamilyGamesUpdater";
+import { upsertFamilyGamesAdminPanel } from "./services/upsertFamilyGamesAdminPanel";
+import { upsertFamilyGamesPanel } from "./services/upsertFamilyGamesPanel";
+import { startFamilyVacationWatcher } from "./services/startFamilyVacationWatcher";
+import { upsertFamilyVacationPanel } from "./services/upsertFamilyVacationPanel";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -76,7 +83,10 @@ export const client = new Client({
 		GatewayIntentBits.GuildMessages,
 		GatewayIntentBits.MessageContent
 	],
-	partials: [Partials.Channel, Partials.Message]
+	partials: [Partials.Message,
+		Partials.Channel,
+		Partials.GuildMember,
+		Partials.User]
 });
 
 // =======================================================
@@ -101,8 +111,6 @@ const familyCommands = [
 	giveCommand.data.toJSON(),
 	takeCommand.data.toJSON(),
 	marketCommand.data.toJSON(),
-	marketAddCommand.data.toJSON(),
-	marketRemoveCommand.data.toJSON(),
 	profileCommand.data.toJSON(),
 	weeklyFeeAddCommand.data.toJSON(),
 	weeklyFeePanelCommand.data.toJSON(),
@@ -110,6 +118,7 @@ const familyCommands = [
 	recruitCommand.data.toJSON(),
 	navigationPanelCommand.data.toJSON(),
 	giveawayCommand.data.toJSON(),
+	gamesCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -182,12 +191,18 @@ client.once("ready", async () => {
 	startFamilyAuditLogger(client);
 	startFamilyWelcomeNotifier(client);
 	startFamilyAfkWatcher(client);
+	startFamilyVacationWatcher(client);
 	startMarketOrdersPanelUpdater(client);
+	startFamilyGamesUpdater(client);
 	initVoiceTracker(client);
 	initMessageTracker(client);
 	initTempVoice(client);
 	await upsertFamilyListPanel(client);
 	await upsertFamilyAfkPanel(client);
+	await upsertFamilyVacationPanel(client);
+	await upsertGiveawayPanel(client);
+	await upsertFamilyGamesPanel(client);
+	await upsertFamilyGamesAdminPanel(client);
 	await upsertFamilyImprovementPanels(client);
 	await startRecruitStatsUpdater();
 });

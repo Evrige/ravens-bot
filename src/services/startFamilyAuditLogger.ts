@@ -4,42 +4,125 @@ import {
 	Client,
 	Colors,
 	EmbedBuilder,
+	ForumChannel,
 	Guild,
 	GuildBasedChannel,
 	GuildMember,
 	Message,
 	Role,
 	TextChannel,
+	ThreadAutoArchiveDuration,
+	ThreadChannel,
 	User,
 	VoiceState,
 } from "discord.js";
 import { config } from "../config/env";
 import { CHANNEL_IDS } from "../config/channels";
 import { truncateText } from "../utils/formatters";
+import { prisma } from "../utils/prisma";
 
 const AUDIT_LOOKBACK_MS = 15_000;
+const MESSAGE_CACHE_LIMIT = 1500;
+const THREAD_TYPE_PREFIX = "family_audit_forum_";
+
 type ActorLike = { id: string; toString(): string } | null | undefined;
+type AuditBucket =
+	| "message-delete"
+	| "message-edit"
+	| "roles"
+	| "channels"
+	| "voice"
+	| "members"
+	| "moderation"
+	| "balance";
+
+type CachedMessageSnapshot = {
+	id: string;
+	guildId: string;
+	channelId: string;
+	authorId: string | null;
+	authorLabel: string;
+	content: string;
+	attachments: string[];
+};
+
+type PartialMessageLike = {
+	content?: string | null;
+	attachments?: { size: number };
+};
+
+const THREAD_NAMES: Record<AuditBucket, string> = {
+	"message-delete": "Удаление сообщений",
+	"message-edit": "Изменение сообщений",
+	roles: "Роли и доступы",
+	channels: "Каналы и структура",
+	voice: "Голосовые действия",
+	members: "Участники и профили",
+	moderation: "Модерация и наказания",
+	balance: "Баланс и монеты",
+};
+
+const THREAD_DESCRIPTIONS: Record<AuditBucket, string> = {
+	"message-delete": "Служебная тема для логов удаления сообщений.",
+	"message-edit": "Служебная тема для логов редактирования сообщений.",
+	roles: "Служебная тема для логов ролей и изменений доступа.",
+	channels: "Служебная тема для логов каналов и категорий.",
+	voice: "Служебная тема для логов голосовых действий.",
+	members: "Служебная тема для логов входа, выхода и изменений профилей участников.",
+	moderation: "Служебная тема для логов банов, киков, таймаутов и других модерационных действий.",
+	balance: "Служебная тема для логов операций с балансом и монетами.",
+};
+
+const messageCache = new Map<string, CachedMessageSnapshot>();
 
 function isFamilyGuild(guild: Guild) {
 	return guild.id === config.FAMILY_SERVER_GUID;
 }
 
-async function getFamilyLogChannel(guild: Guild): Promise<TextChannel | null> {
-	if (!isFamilyGuild(guild)) return null;
+function isFamilyAuditServiceChannel(channel: GuildBasedChannel | null | undefined) {
+	if (!channel) return false;
 
-	const channel = await guild.channels.fetch(CHANNEL_IDS.FAMILY_LOG).catch(() => null);
-	if (!channel || channel.type !== ChannelType.GuildText) return null;
+	const parentId = (channel as any).parentId ?? null;
+	if (parentId !== CHANNEL_IDS.FAMILY_LOG) return false;
 
-	return channel as TextChannel;
+	if (channel.type !== ChannelType.PublicThread && channel.type !== ChannelType.PrivateThread) {
+		return false;
+	}
+
+	return (Object.values(THREAD_NAMES) as string[]).includes(channel.name);
 }
 
-async function sendAuditEmbed(guild: Guild, embed: EmbedBuilder) {
-	const channel = await getFamilyLogChannel(guild);
-	if (!channel) return;
+function getThreadType(bucket: AuditBucket) {
+	return `${THREAD_TYPE_PREFIX}${bucket}`;
+}
 
-	await channel.send({ embeds: [embed] }).catch((error) => {
-		console.error("[family-audit] failed to send log:", error);
-	});
+function rememberMessageSnapshot(snapshot: CachedMessageSnapshot) {
+	messageCache.set(snapshot.id, snapshot);
+
+	if (messageCache.size <= MESSAGE_CACHE_LIMIT) return;
+
+	const oldestKey = messageCache.keys().next().value;
+	if (oldestKey) {
+		messageCache.delete(oldestKey);
+	}
+}
+
+function snapshotFromMessage(message: any): CachedMessageSnapshot | null {
+	if (!message.guildId || !message.channelId || !message.id) return null;
+
+	const attachments = message.attachments?.size
+		? Array.from(message.attachments.values()).map((attachment: any) => attachment.url).filter(Boolean)
+		: [];
+
+	return {
+		id: message.id,
+		guildId: message.guildId,
+		channelId: message.channelId,
+		authorId: message.author?.id ?? null,
+		authorLabel: message.author ? `${message.author} (\`${message.author.id}\`)` : "Не удалось определить",
+		content: message.content ?? "",
+		attachments,
+	};
 }
 
 function formatUser(user: ActorLike) {
@@ -47,6 +130,10 @@ function formatUser(user: ActorLike) {
 }
 
 function formatMember(member: GuildMember | null | undefined) {
+	return member ? `${member} (\`${member.id}\`)` : "Не удалось определить";
+}
+
+function formatMemberLike(member: { id: string; toString(): string } | null | undefined) {
 	return member ? `${member} (\`${member.id}\`)` : "Не удалось определить";
 }
 
@@ -80,18 +167,15 @@ function formatPermissions(role: Role) {
 	return role.permissions.toArray().map((permission) => `\`${permission}\``).join(", ") || "Нет";
 }
 
-function formatMessageContent(message: Message | PartialMessageLike) {
-	if (!message.content?.trim()) {
-		return message.attachments?.size ? "Сообщение без текста, только вложения." : "Текст недоступен.";
+function formatMessageContent(message: Message | PartialMessageLike, snapshot?: CachedMessageSnapshot | null) {
+	const content = message.content?.trim() || snapshot?.content?.trim();
+	if (!content) {
+		const attachmentCount = message.attachments?.size ?? snapshot?.attachments.length ?? 0;
+		return attachmentCount ? "Сообщение без текста, только вложения." : "Текст недоступен.";
 	}
 
-	return truncateText(message.content, 1000);
+	return truncateText(content, 1000);
 }
-
-type PartialMessageLike = {
-	content?: string | null;
-	attachments?: { size: number };
-};
 
 function buildBaseEmbed(title: string, color: number, executor: ActorLike, description: string) {
 	return new EmbedBuilder()
@@ -108,7 +192,7 @@ async function findAuditEntry(
 	matcher: (entry: any) => boolean,
 ) {
 	try {
-		const audit = await guild.fetchAuditLogs({ type, limit: 6 });
+		const audit = await guild.fetchAuditLogs({ type, limit: 8 });
 		const now = Date.now();
 
 		return audit.entries.find((entry) => {
@@ -197,7 +281,233 @@ function describeChannelChanges(oldChannel: GuildBasedChannel, newChannel: Guild
 	return changes;
 }
 
+function formatOverwriteTarget(channel: GuildBasedChannel, overwriteId: string) {
+	const role = channel.guild.roles.cache.get(overwriteId);
+	if (role) return formatRole(role);
+	return `<@${overwriteId}>`;
+}
+
+function formatOverwritePermissions(overwrite: any) {
+	const allow = overwrite?.allow?.toArray?.() ?? [];
+	const deny = overwrite?.deny?.toArray?.() ?? [];
+
+	const parts: string[] = [];
+	if (allow.length) parts.push(`allow: ${allow.map((value: string) => `\`${value}\``).join(", ")}`);
+	if (deny.length) parts.push(`deny: ${deny.map((value: string) => `\`${value}\``).join(", ")}`);
+	return parts.join(" | ") || "Нет прав";
+}
+
+function describeOverwriteChanges(oldChannel: GuildBasedChannel, newChannel: GuildBasedChannel) {
+	const oldCache = (oldChannel as any).permissionOverwrites?.cache;
+	const newCache = (newChannel as any).permissionOverwrites?.cache;
+	if (!oldCache || !newCache) return [];
+
+	const ids = new Set<string>([
+		...(Array.from(oldCache.keys()) as string[]),
+		...(Array.from(newCache.keys()) as string[]),
+	]);
+
+	const changes: string[] = [];
+	for (const overwriteId of ids) {
+		const before = oldCache.get(overwriteId);
+		const after = newCache.get(overwriteId);
+		const target = formatOverwriteTarget(newChannel, overwriteId);
+
+		if (!before && after) {
+			changes.push(`Добавлен доступ для ${target}\n${formatOverwritePermissions(after)}`);
+			continue;
+		}
+
+		if (before && !after) {
+			changes.push(`Удалён доступ для ${target}`);
+			continue;
+		}
+
+		if (!before || !after) continue;
+
+		const beforeAllow = String(before.allow?.bitfield ?? "");
+		const beforeDeny = String(before.deny?.bitfield ?? "");
+		const afterAllow = String(after.allow?.bitfield ?? "");
+		const afterDeny = String(after.deny?.bitfield ?? "");
+
+		if (beforeAllow !== afterAllow || beforeDeny !== afterDeny) {
+			changes.push(
+				`Изменён доступ для ${target}\nБыло: ${formatOverwritePermissions(before)}\nСтало: ${formatOverwritePermissions(after)}`
+			);
+		}
+	}
+
+	return changes;
+}
+
+async function resolveFamilyLogTarget(guild: Guild) {
+	if (!isFamilyGuild(guild)) return null;
+
+	const channel = await guild.channels.fetch(CHANNEL_IDS.FAMILY_LOG).catch(() => null);
+	if (!channel) return null;
+
+	if (channel.type === ChannelType.GuildForum) {
+		return { kind: "forum" as const, channel: channel as ForumChannel };
+	}
+
+	if (channel.type === ChannelType.GuildText) {
+		return { kind: "text" as const, channel: channel as TextChannel };
+	}
+
+	return null;
+}
+
+function pickAppliedTagsIfRequired(forum: ForumChannel) {
+	const tags = (forum as any).availableTags as Array<{ id: string; name: string }> | undefined;
+	if (!tags?.length) return undefined;
+	return [tags[0].id];
+}
+
+async function ensureAuditThread(forum: ForumChannel, bucket: AuditBucket) {
+	const type = getThreadType(bucket);
+	const stored = await prisma.botMessage.findUnique({ where: { type } });
+
+	if (stored?.messageId) {
+		const existing = await forum.client.channels.fetch(stored.messageId).catch(() => null);
+		if (existing?.isThread()) {
+			const thread = existing as ThreadChannel;
+			if (thread.archived) await thread.setArchived(false).catch(() => null);
+			if (thread.locked) await thread.setLocked(false).catch(() => null);
+			return thread;
+		}
+	}
+
+	const targetName = THREAD_NAMES[bucket];
+	const active = await forum.threads.fetchActive().catch(() => null);
+	const activeFound = active?.threads.find((thread) => thread.name === targetName);
+	if (activeFound) {
+		await prisma.botMessage.upsert({
+			where: { type },
+			update: { messageId: activeFound.id, channelId: forum.id },
+			create: { type, messageId: activeFound.id, channelId: forum.id },
+		});
+		return activeFound as ThreadChannel;
+	}
+
+	const archived = await forum.threads.fetchArchived({ type: "public", fetchAll: true }).catch(() => null);
+	const archivedFound = archived?.threads.find((thread) => thread.name === targetName);
+	if (archivedFound) {
+		await archivedFound.setArchived(false).catch(() => null);
+		await archivedFound.setLocked(false).catch(() => null);
+		await prisma.botMessage.upsert({
+			where: { type },
+			update: { messageId: archivedFound.id, channelId: forum.id },
+			create: { type, messageId: archivedFound.id, channelId: forum.id },
+		});
+		return archivedFound as ThreadChannel;
+	}
+
+	const appliedTags = pickAppliedTagsIfRequired(forum);
+	const created = await forum.threads.create({
+		name: targetName,
+		autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
+		message: { content: THREAD_DESCRIPTIONS[bucket] },
+		...(appliedTags ? { appliedTags } : {}),
+	});
+
+	await prisma.botMessage.upsert({
+		where: { type },
+		update: { messageId: created.id, channelId: forum.id },
+		create: { type, messageId: created.id, channelId: forum.id },
+	});
+
+	return created;
+}
+
+async function sendAuditEmbed(guild: Guild, bucket: AuditBucket, embed: EmbedBuilder) {
+	const target = await resolveFamilyLogTarget(guild);
+	if (!target) return;
+
+	try {
+		if (target.kind === "text") {
+			await target.channel.send({ embeds: [embed] });
+			return;
+		}
+
+		const thread = await ensureAuditThread(target.channel, bucket);
+		await thread.send({ embeds: [embed] });
+	} catch (error) {
+		console.error("[family-audit] failed to send log:", error);
+	}
+}
+
+export async function sendFamilyAuditCustomEmbed(
+	client: Client,
+	bucket: AuditBucket,
+	embed: EmbedBuilder
+) {
+	const guild = await client.guilds.fetch(config.FAMILY_SERVER_GUID).catch(() => null);
+	if (!guild || !isFamilyGuild(guild)) return;
+
+	await sendAuditEmbed(guild, bucket, embed);
+}
+
 export function startFamilyAuditLogger(client: Client) {
+	client.on("guildMemberAdd", async (member) => {
+		if (!isFamilyGuild(member.guild)) return;
+
+		const embed = buildBaseEmbed(
+			"Участник вошёл на сервер",
+			Colors.Green,
+			null,
+			`${formatMember(member)} присоединился к серверу`
+		).addFields(
+			{ name: "Аккаунт создан", value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:f>`, inline: true },
+			{ name: "Всего участников", value: `\`${member.guild.memberCount}\``, inline: true },
+		);
+
+		await sendAuditEmbed(member.guild, "members", embed);
+	});
+
+	client.on("guildMemberRemove", async (member) => {
+		if (!isFamilyGuild(member.guild)) return;
+
+		const kickEntry = await findAuditEntry(
+			member.guild,
+			AuditLogEvent.MemberKick,
+			(auditEntry) => auditEntry.target?.id === member.id,
+		);
+
+		if (kickEntry) {
+			const embed = buildBaseEmbed(
+				"Участник кикнут",
+				Colors.Red,
+				kickEntry.executor ?? null,
+				`${formatMemberLike(member)} был кикнут с сервера`
+			);
+
+			await sendAuditEmbed(member.guild, "moderation", embed);
+			return;
+		}
+
+		const embed = buildBaseEmbed(
+			"Участник покинул сервер",
+			Colors.Orange,
+			null,
+			`${formatMemberLike(member)} покинул сервер`
+		);
+
+		await sendAuditEmbed(member.guild, "members", embed);
+	});
+
+	client.on("messageCreate", (message) => {
+		if (!message.guild || !isFamilyGuild(message.guild) || message.author?.bot) return;
+		const snapshot = snapshotFromMessage(message);
+		if (snapshot) rememberMessageSnapshot(snapshot);
+	});
+
+	client.on("messageUpdate", (oldMessage: any, newMessage: any) => {
+		if (!newMessage.guild || !isFamilyGuild(newMessage.guild) || newMessage.author?.bot) return;
+
+		const snapshot = snapshotFromMessage(newMessage) ?? snapshotFromMessage(oldMessage);
+		if (snapshot) rememberMessageSnapshot(snapshot);
+	});
+
 	client.on("roleCreate", async (role) => {
 		if (!isFamilyGuild(role.guild)) return;
 
@@ -218,7 +528,7 @@ export function startFamilyAuditLogger(client: Client) {
 			{ name: "Можно упоминать", value: formatValue(role.mentionable), inline: true },
 		);
 
-		await sendAuditEmbed(role.guild, embed);
+		await sendAuditEmbed(role.guild, "roles", embed);
 	});
 
 	client.on("roleDelete", async (role) => {
@@ -237,10 +547,10 @@ export function startFamilyAuditLogger(client: Client) {
 			`Удалена роль \`${role.name}\` (\`${role.id}\`)`
 		).addFields(
 			{ name: "Цвет", value: `\`${role.hexColor}\``, inline: true },
-			{ name: "Права", value: formatPermissions(role).slice(0, 1024), inline: false },
+			{ name: "Права", value: truncateText(formatPermissions(role), 1024), inline: false },
 		);
 
-		await sendAuditEmbed(role.guild, embed);
+		await sendAuditEmbed(role.guild, "roles", embed);
 	});
 
 	client.on("roleUpdate", async (oldRole, newRole) => {
@@ -262,11 +572,11 @@ export function startFamilyAuditLogger(client: Client) {
 			`Изменена роль ${formatRole(newRole)}`
 		).addFields({
 			name: "Изменения",
-			value: changes.join("\n").slice(0, 1024),
+			value: truncateText(changes.join("\n"), 1024),
 			inline: false,
 		});
 
-		await sendAuditEmbed(newRole.guild, embed);
+		await sendAuditEmbed(newRole.guild, "roles", embed);
 	});
 
 	client.on("guildMemberUpdate", async (oldMember, newMember) => {
@@ -274,10 +584,7 @@ export function startFamilyAuditLogger(client: Client) {
 
 		const addedRoles = newMember.roles.cache.filter((role) => !oldMember.roles.cache.has(role.id));
 		const removedRoles = oldMember.roles.cache.filter((role) => !newMember.roles.cache.has(role.id));
-
-		if (!addedRoles.size && !removedRoles.size) {
-			return;
-		}
+		if (!addedRoles.size && !removedRoles.size) return;
 
 		const entry = await findAuditEntry(
 			newMember.guild,
@@ -288,25 +595,65 @@ export function startFamilyAuditLogger(client: Client) {
 				auditEntry.changes.some((change: any) => change.key === "$add" || change.key === "$remove"),
 		);
 
-		const addedText = addedRoles.map((role) => formatRole(role)).join("\n") || "Нет";
-		const removedText = removedRoles.map((role) => formatRole(role)).join("\n") || "Нет";
-
 		const embed = buildBaseEmbed(
 			"Изменены роли участника",
 			Colors.Blurple,
 			entry?.executor ?? null,
 			`Изменены роли у ${formatMember(newMember)}`
 		).addFields(
-			{ name: "Выданы роли", value: addedText.slice(0, 1024), inline: true },
-			{ name: "Сняты роли", value: removedText.slice(0, 1024), inline: true },
+			{ name: "Выданы роли", value: truncateText(addedRoles.map((role) => formatRole(role)).join("\n") || "Нет", 1024), inline: true },
+			{ name: "Сняты роли", value: truncateText(removedRoles.map((role) => formatRole(role)).join("\n") || "Нет", 1024), inline: true },
 		);
 
-		await sendAuditEmbed(newMember.guild, embed);
+		await sendAuditEmbed(newMember.guild, "roles", embed);
+
+		if ((oldMember.nickname ?? null) !== (newMember.nickname ?? null)) {
+			const entry = await findAuditEntry(
+				newMember.guild,
+				AuditLogEvent.MemberUpdate,
+				(auditEntry) => auditEntry.target?.id === newMember.id,
+			);
+
+			const nickEmbed = buildBaseEmbed(
+				"Изменён ник участника",
+				Colors.Blurple,
+				entry?.executor ?? null,
+				`Обновлён ник у ${formatMember(newMember)}`
+			).addFields(
+				{ name: "Было", value: formatValue(oldMember.nickname), inline: true },
+				{ name: "Стало", value: formatValue(newMember.nickname), inline: true },
+			);
+
+			await sendAuditEmbed(newMember.guild, "members", nickEmbed);
+		}
+
+		const oldTimeout = oldMember.communicationDisabledUntilTimestamp ?? null;
+		const newTimeout = newMember.communicationDisabledUntilTimestamp ?? null;
+		if (oldTimeout !== newTimeout) {
+			const entry = await findAuditEntry(
+				newMember.guild,
+				AuditLogEvent.MemberUpdate,
+				(auditEntry) => auditEntry.target?.id === newMember.id,
+			);
+
+			const isRemoved = !newTimeout;
+			const timeoutEmbed = buildBaseEmbed(
+				isRemoved ? "Снят таймаут" : "Выдан таймаут",
+				isRemoved ? Colors.Green : Colors.Red,
+				entry?.executor ?? null,
+				`${formatMember(newMember)} ${isRemoved ? "снят с таймаута" : "получил таймаут"}`
+			).addFields(
+				{ name: "Было", value: oldTimeout ? `<t:${Math.floor(oldTimeout / 1000)}:f>` : "Не было", inline: true },
+				{ name: "Стало", value: newTimeout ? `<t:${Math.floor(newTimeout / 1000)}:f>` : "Снято", inline: true },
+			);
+
+			await sendAuditEmbed(newMember.guild, "moderation", timeoutEmbed);
+		}
 	});
 
 	client.on("channelCreate", async (channel) => {
-		if (!("guild" in channel)) return;
-		if (!isFamilyGuild(channel.guild)) return;
+		if (!("guild" in channel) || !isFamilyGuild(channel.guild)) return;
+		if (isFamilyAuditServiceChannel(channel as GuildBasedChannel)) return;
 
 		const entry = await findAuditEntry(
 			channel.guild,
@@ -324,12 +671,12 @@ export function startFamilyAuditLogger(client: Client) {
 			{ name: "Категория", value: channel.parent?.name ?? "Нет категории", inline: true },
 		);
 
-		await sendAuditEmbed(channel.guild, embed);
+		await sendAuditEmbed(channel.guild, "channels", embed);
 	});
 
 	client.on("channelDelete", async (channel) => {
-		if (!("guild" in channel)) return;
-		if (!isFamilyGuild(channel.guild)) return;
+		if (!("guild" in channel) || !isFamilyGuild(channel.guild)) return;
+		if (isFamilyAuditServiceChannel(channel as GuildBasedChannel)) return;
 
 		const entry = await findAuditEntry(
 			channel.guild,
@@ -347,14 +694,17 @@ export function startFamilyAuditLogger(client: Client) {
 			{ name: "Категория", value: channel.parent?.name ?? "Нет категории", inline: true },
 		);
 
-		await sendAuditEmbed(channel.guild, embed);
+		await sendAuditEmbed(channel.guild, "channels", embed);
 	});
 
 	client.on("channelUpdate", async (oldChannel, newChannel) => {
-		if (!("guild" in oldChannel) || !("guild" in newChannel)) return;
-		if (!isFamilyGuild(newChannel.guild)) return;
+		if (!("guild" in oldChannel) || !("guild" in newChannel) || !isFamilyGuild(newChannel.guild)) return;
+		if (isFamilyAuditServiceChannel(newChannel as GuildBasedChannel)) return;
 
-		const changes = describeChannelChanges(oldChannel as GuildBasedChannel, newChannel as GuildBasedChannel);
+		const changes = [
+			...describeChannelChanges(oldChannel as GuildBasedChannel, newChannel as GuildBasedChannel),
+			...describeOverwriteChanges(oldChannel as GuildBasedChannel, newChannel as GuildBasedChannel),
+		];
 		if (!changes.length) return;
 
 		const entry = await findAuditEntry(
@@ -370,99 +720,259 @@ export function startFamilyAuditLogger(client: Client) {
 			`Изменён канал ${formatChannel(newChannel)}`
 		).addFields({
 			name: "Изменения",
-			value: changes.join("\n").slice(0, 1024),
+			value: truncateText(changes.join("\n"), 1024),
 			inline: false,
 		});
 
-		await sendAuditEmbed(newChannel.guild, embed);
+		await sendAuditEmbed(newChannel.guild, "channels", embed);
 	});
 
 	client.on("voiceStateUpdate", async (oldState: VoiceState, newState: VoiceState) => {
 		if (!newState.guild || !isFamilyGuild(newState.guild)) return;
-		if (!oldState.channelId || !newState.channelId) return;
-		if (oldState.channelId === newState.channelId) return;
+
+		if (oldState.channelId !== newState.channelId) {
+			if (oldState.channelId && newState.channelId) {
+				const entry = await findAuditEntry(
+					newState.guild,
+					AuditLogEvent.MemberMove,
+					(auditEntry) =>
+						auditEntry.target?.id === newState.id &&
+						(auditEntry.extra?.channel?.id === newState.channelId || auditEntry.extra?.channel?.id === oldState.channelId),
+				);
+
+				if (entry?.executor && entry.executor.id !== newState.id) {
+					const embed = buildBaseEmbed(
+						"Участник перемещён",
+						Colors.Orange,
+						entry.executor,
+						`${formatMember(newState.member ?? oldState.member ?? null)} был перемещён между голосовыми каналами`
+					).addFields(
+						{ name: "Из канала", value: formatChannel(oldState.channel), inline: true },
+						{ name: "В канал", value: formatChannel(newState.channel), inline: true },
+					);
+
+					await sendAuditEmbed(newState.guild, "voice", embed);
+					return;
+				}
+
+				const embed = buildBaseEmbed(
+					"Смена голосового канала",
+					Colors.Blurple,
+					null,
+					`${formatMember(newState.member ?? oldState.member ?? null)} перешёл в другой голосовой канал`
+				).addFields(
+					{ name: "Из канала", value: formatChannel(oldState.channel), inline: true },
+					{ name: "В канал", value: formatChannel(newState.channel), inline: true },
+				);
+
+				await sendAuditEmbed(newState.guild, "voice", embed);
+				return;
+			}
+
+			if (!oldState.channelId && newState.channelId) {
+				const embed = buildBaseEmbed(
+					"Вход в голосовой канал",
+					Colors.Green,
+					null,
+					`${formatMember(newState.member ?? null)} подключился к голосовому каналу`
+				).addFields({
+					name: "Канал",
+					value: formatChannel(newState.channel),
+					inline: true,
+				});
+
+				await sendAuditEmbed(newState.guild, "voice", embed);
+				return;
+			}
+
+			if (oldState.channelId && !newState.channelId) {
+				const embed = buildBaseEmbed(
+					"Выход из голосового канала",
+					Colors.Red,
+					null,
+					`${formatMember(oldState.member ?? null)} вышел из голосового канала`
+				).addFields({
+					name: "Канал",
+					value: formatChannel(oldState.channel),
+					inline: true,
+				});
+
+				await sendAuditEmbed(newState.guild, "voice", embed);
+				return;
+			}
+		}
+	});
+
+	client.on("guildBanAdd", async (ban) => {
+		if (!isFamilyGuild(ban.guild)) return;
 
 		const entry = await findAuditEntry(
-			newState.guild,
-			AuditLogEvent.MemberMove,
-			(auditEntry) =>
-				auditEntry.target?.id === newState.id &&
-				(auditEntry.extra?.channel?.id === newState.channelId || auditEntry.extra?.channel?.id === oldState.channelId),
+			ban.guild,
+			AuditLogEvent.MemberBanAdd,
+			(auditEntry) => auditEntry.target?.id === ban.user.id,
 		);
-
-		if (!entry?.executor || entry.executor.id === newState.id) {
-			return;
-		}
 
 		const embed = buildBaseEmbed(
-			"Участник перемещён",
-			Colors.Orange,
-			entry.executor,
-			`${formatMember(newState.member ?? oldState.member ?? null)} был перемещён по голосовым каналам`
-		).addFields(
-			{ name: "Из канала", value: formatChannel(oldState.channel), inline: true },
-			{ name: "В канал", value: formatChannel(newState.channel), inline: true },
+			"Выдан бан",
+			Colors.Red,
+			entry?.executor ?? null,
+			`${formatUser(ban.user)} был забанен`
 		);
 
-		await sendAuditEmbed(newState.guild, embed);
+		await sendAuditEmbed(ban.guild, "moderation", embed);
+	});
+
+	client.on("guildBanRemove", async (ban) => {
+		if (!isFamilyGuild(ban.guild)) return;
+
+		const entry = await findAuditEntry(
+			ban.guild,
+			AuditLogEvent.MemberBanRemove,
+			(auditEntry) => auditEntry.target?.id === ban.user.id,
+		);
+
+		const embed = buildBaseEmbed(
+			"Снят бан",
+			Colors.Green,
+			entry?.executor ?? null,
+			`С пользователя ${formatUser(ban.user)} снят бан`
+		);
+
+		await sendAuditEmbed(ban.guild, "moderation", embed);
 	});
 
 	client.on("messageDelete", async (message: any) => {
-		if (!message.guild || !isFamilyGuild(message.guild)) return;
-		if (message.author?.bot) return;
+		try {
+			if (!message.guild || !isFamilyGuild(message.guild)) return;
+
+			// Пытаемся догрузить partial-сообщение, если можно
+			if (message.partial) {
+				try {
+					await message.fetch();
+				} catch {}
+			}
+
+			const snapshot = messageCache.get(message.id) ?? null;
+
+			const author = message.author ?? null;
+			const authorId = author?.id ?? snapshot?.authorId ?? null;
+
+			// Если это бот — не логируем
+			if (author?.bot) {
+				messageCache.delete(message.id);
+				return;
+			}
+
+			// Небольшая задержка, чтобы audit log успел обновиться
+			await new Promise((resolve) => setTimeout(resolve, 1200));
+
+			let entry: any = null;
+
+			if (authorId) {
+				entry = await findAuditEntry(
+					message.guild,
+					AuditLogEvent.MessageDelete,
+					(auditEntry) =>
+						auditEntry.target?.id === authorId &&
+						auditEntry.extra?.channel?.id === message.channelId
+				);
+			}
+
+			// Фолбэк: если по authorId не нашли, ищем просто по каналу
+			if (!entry) {
+				entry = await findAuditEntry(
+					message.guild,
+					AuditLogEvent.MessageDelete,
+					(auditEntry) => auditEntry.extra?.channel?.id === message.channelId
+				);
+			}
+
+			const attachments =
+				message.attachments?.size
+					? Array.from(message.attachments.values())
+						.map((attachment: any) => attachment.url)
+						.filter(Boolean)
+					: snapshot?.attachments ?? [];
+
+			const authorLabel =
+				author
+					? formatUser(author)
+					: snapshot?.authorLabel ?? "Не удалось определить";
+
+			const executor =
+				entry?.executor && entry.executor.id !== authorId
+					? entry.executor
+					: null;
+
+			const deletedByModerator = !!executor;
+
+			const embed = buildBaseEmbed(
+				"Удалено сообщение",
+				Colors.Red,
+				executor,
+				deletedByModerator
+					? `Модератор удалил сообщение в канале <#${message.channelId}>`
+					: `Сообщение удалено в канале <#${message.channelId}>`
+			).addFields(
+				{ name: "Автор", value: authorLabel, inline: true },
+				{ name: "Канал", value: `<#${message.channelId}>`, inline: true },
+				{ name: "ID сообщения", value: `\`${message.id}\``, inline: true },
+				{ name: "Содержимое", value: formatMessageContent(message, snapshot), inline: false },
+			);
+
+			if (attachments.length) {
+				embed.addFields({
+					name: "Вложения",
+					value: truncateText(attachments.join("\n"), 1000),
+					inline: false,
+				});
+			}
+
+			await sendAuditEmbed(message.guild, "message-delete", embed);
+			messageCache.delete(message.id);
+		} catch (error) {
+			console.error("[family-audit] messageDelete error:", error);
+		}
+	});
+
+	client.on("messageDeleteBulk", async (messages) => {
+		const firstMessage = messages.first();
+		if (!firstMessage?.guild || !isFamilyGuild(firstMessage.guild)) return;
+
+		const authors = new Set<string>();
+		for (const message of messages.values()) {
+			if (message.author?.bot) continue;
+			const snapshot = messageCache.get(message.id);
+			if (message.author?.id) authors.add(message.author.id);
+			if (snapshot?.authorId) authors.add(snapshot.authorId);
+			messageCache.delete(message.id);
+		}
 
 		const entry = await findAuditEntry(
-			message.guild,
-			AuditLogEvent.MessageDelete,
-			(auditEntry) =>
-				auditEntry.target?.id === message.author?.id &&
-				auditEntry.extra?.channel?.id === message.channelId,
+			firstMessage.guild,
+			AuditLogEvent.MessageBulkDelete,
+			(auditEntry) => auditEntry.extra?.channel?.id === firstMessage.channelId,
 		);
 
 		const embed = buildBaseEmbed(
-			"Удалено сообщение",
-			Colors.Red,
-			entry?.executor ?? message.author ?? null,
-			`Сообщение удалено в канале <#${message.channelId}>`
+			"Массовое удаление сообщений",
+			Colors.DarkRed,
+			entry?.executor ?? null,
+			`В канале <#${firstMessage.channelId}> было удалено **${messages.size}** сообщений`
 		).addFields(
-			{
-				name: "Автор",
-				value: formatUser(message.author ?? null),
-				inline: true,
-			},
-			{
-				name: "Канал",
-				value: `<#${message.channelId}>`,
-				inline: true,
-			},
-			{
-				name: "Содержимое",
-				value: formatMessageContent(message),
-				inline: false,
-			},
+			{ name: "Канал", value: `<#${firstMessage.channelId}>`, inline: true },
+			{ name: "Количество сообщений", value: `\`${messages.size}\``, inline: true },
+			{ name: "Затронуто авторов", value: `\`${authors.size}\``, inline: true },
 		);
 
-		if (message.attachments.size) {
-			embed.addFields({
-				name: "Вложения",
-				value: truncateText(
-					message.attachments
-						.map((attachment: { url: string }) => attachment.url)
-						.join("\n"),
-					1000
-				),
-				inline: false,
-			});
-		}
-
-		await sendAuditEmbed(message.guild, embed);
+		await sendAuditEmbed(firstMessage.guild, "message-delete", embed);
 	});
 
 	client.on("messageUpdate", async (oldMessage: any, newMessage: any) => {
-		if (!newMessage.guild || !isFamilyGuild(newMessage.guild)) return;
-		if (newMessage.author?.bot) return;
+		if (!newMessage.guild || !isFamilyGuild(newMessage.guild) || newMessage.author?.bot) return;
 
-		const before = oldMessage.content ?? "";
+		const beforeSnapshot = messageCache.get(newMessage.id) ?? snapshotFromMessage(oldMessage);
+		const before = oldMessage.content ?? beforeSnapshot?.content ?? "";
 		const after = newMessage.content ?? "";
 		if (before === after) return;
 
@@ -472,23 +982,13 @@ export function startFamilyAuditLogger(client: Client) {
 			newMessage.author ?? null,
 			`Сообщение изменено в канале <#${newMessage.channelId}>`
 		).addFields(
-			{
-				name: "Автор",
-				value: formatUser(newMessage.author ?? oldMessage.author ?? null),
-				inline: true,
-			},
-			{
-				name: "До",
-				value: truncateText(before || "Текст недоступен.", 1000),
-				inline: false,
-			},
-			{
-				name: "После",
-				value: truncateText(after || "Текст недоступен.", 1000),
-				inline: false,
-			},
+			{ name: "Автор", value: formatUser(newMessage.author ?? oldMessage.author ?? null), inline: true },
+			{ name: "Канал", value: `<#${newMessage.channelId}>`, inline: true },
+			{ name: "ID сообщения", value: `\`${newMessage.id}\``, inline: true },
+			{ name: "До", value: truncateText(before || "Текст недоступен.", 1000), inline: false },
+			{ name: "После", value: truncateText(after || "Текст недоступен.", 1000), inline: false },
 		);
 
-		await sendAuditEmbed(newMessage.guild, embed);
+		await sendAuditEmbed(newMessage.guild, "message-edit", embed);
 	});
 }

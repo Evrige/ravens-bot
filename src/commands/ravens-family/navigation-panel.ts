@@ -10,6 +10,7 @@ import {
 import { CUSTOM_COMMAND } from "../../constants/customIds";
 import { FAMILY_HIGH_ROLE_IDS } from "../../config/staff";
 import { checkRolesOrReply } from "../../utils/checkRoles";
+import path from "path";
 
 const V2 = {
 	Container: 17,
@@ -24,7 +25,7 @@ const V2 = {
 const TEMP_CHANNEL_ID = "1474900345300979835";
 const SERVER_NAME = "LONDO";
 const LOGO_FILE_NAME = "londo.png";
-const LOGO_FILE_PATH = "C:\\Users\\artur\\WebstormProjects\\ravens-bot\\assets\\londo.png";
+const LOGO_FILE_PATH = path.join(process.cwd(), "assets", "londo.png");
 
 function channelRef(channelId: string) {
 	return `<#${channelId}>`;
@@ -32,6 +33,52 @@ function channelRef(channelId: string) {
 
 function channelLine(channelId: string, description: string) {
 	return `• ${channelRef(channelId)} — ${description}`;
+}
+
+function normalizeUrl(
+	value: string | null | undefined,
+	guildId: string,
+	fallbackChannelId: string
+): string | null {
+	if (!value) return null;
+
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	if (/^\d+$/.test(trimmed)) {
+		return `https://discord.com/channels/${guildId}/${trimmed}`;
+	}
+
+	if (/^https?:\/\//i.test(trimmed) || /^discord:\/\//i.test(trimmed)) {
+		return trimmed;
+	}
+
+	return `https://discord.com/channels/${guildId}/${fallbackChannelId}`;
+}
+
+function buildLinkSection(text: string, label: string, url: string | null) {
+	if (!url) {
+		return {
+			type: V2.TextDisplay,
+			content: text,
+		};
+	}
+
+	return {
+		type: V2.Section,
+		components: [
+			{
+				type: V2.TextDisplay,
+				content: text,
+			},
+		],
+		accessory: {
+			type: V2.Button,
+			style: ButtonStyle.Link,
+			label,
+			url,
+		},
+	};
 }
 
 function buildNavigationPanel(params: {
@@ -90,7 +137,6 @@ function buildNavigationPanel(params: {
 				channelLine(params.newsChannelId, "Важные новости сервера."),
 				channelLine(params.guestChatChannelId, "Общий чат, гостевой."),
 				channelLine(params.familyApplyChannelId, "Подать заявку в семью."),
-				channelLine(params.resultChannelId, "Просмотр результата заявок."),
 				channelLine(params.guestVoiceChannelId, "Гостевой voice."),
 			].join("\n"),
 		},
@@ -99,48 +145,26 @@ function buildNavigationPanel(params: {
 			type: V2.TextDisplay,
 			content: "## Полезные ссылки",
 		},
+		buildLinkSection(
+			`👋 Ждём тебя в нашей дружной фаме **${SERVER_NAME}**`,
+			"Подать заявку",
+			params.applyUrl
+		),
+		buildLinkSection(
+			"<:mc:1496997310956310770> Ссылка на регистрацию **/PROMO SENTICEE**",
+			"Регистрация",
+			params.registerUrl
+		),
+		buildLinkSection(
+			"<:telegram:1496991712550064249>  Telegram канал овнера - **SENTICEE.**",
+			"Telegram",
+			params.telegramUrl
+		),
+		{
+			type: V2.TextDisplay,
+			content: "-# LONDO BOT",
+		}
 	);
-
-	const linkSections = [
-		{
-			text: `👋 Ждём тебя в нашем дружной фаме **${SERVER_NAME}**`,
-			label: "Подать заявку",
-			url: params.applyUrl,
-		},
-		{
-			text: "💮 Ссылка на регистрацию /PROMO SENTICEE",
-			label: "Регистрация",
-			url: params.registerUrl,
-		},
-		{
-			text: "🖋 Telegram канал ownera - SENTICEE.",
-			label: "Telegram",
-			url: params.telegramUrl,
-		},
-	];
-
-	for (const item of linkSections) {
-		components.push({
-			type: V2.Section,
-			components: [
-				{
-					type: V2.TextDisplay,
-					content: item.text,
-				},
-			],
-			accessory: {
-				type: V2.Button,
-				style: ButtonStyle.Link,
-				label: item.label,
-				url: item.url,
-			},
-		});
-	}
-
-	components.push({
-		type: V2.TextDisplay,
-		content: "-# LONDO BOT",
-	});
 
 	return {
 		type: V2.Container,
@@ -227,7 +251,7 @@ export const navigationPanelCommand = {
 		),
 
 	async execute(interaction: ChatInputCommandInteraction) {
-		await interaction.deferReply({ ephemeral: true }).catch(() => {});
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
 
 		if (!(await checkRolesOrReply(interaction, FAMILY_HIGH_ROLE_IDS))) return;
 
@@ -236,21 +260,47 @@ export const navigationPanelCommand = {
 			return interaction.editReply("❌ Эта команда доступна только в текстовом канале.");
 		}
 
+		if (!interaction.guildId) {
+			return interaction.editReply("❌ Не удалось определить сервер.");
+		}
+
 		const fallbackChannelId = TEMP_CHANNEL_ID;
 		const bannerUrl = interaction.options.getString("banner_url");
-		const registerUrl = interaction.options.getString("register_url", true);
-		const telegramUrl = interaction.options.getString("telegram_url", true);
 
-		const navigationChannelId = interaction.options.getChannel("navigation_channel")?.id ?? fallbackChannelId;
-		const mediaChannelId = interaction.options.getChannel("media_channel")?.id ?? fallbackChannelId;
-		const newsChannelId = interaction.options.getChannel("news_channel")?.id ?? fallbackChannelId;
-		const guestChatChannelId = interaction.options.getChannel("guest_chat_channel")?.id ?? fallbackChannelId;
-		const familyApplyChannelId = interaction.options.getChannel("family_apply_channel")?.id ?? fallbackChannelId;
-		const resultChannelId = interaction.options.getChannel("result_channel")?.id ?? fallbackChannelId;
-		const guestVoiceChannelId = interaction.options.getChannel("guest_voice_channel")?.id ?? fallbackChannelId;
+		const navigationChannelId =
+			interaction.options.getChannel("navigation_channel")?.id ?? fallbackChannelId;
+		const mediaChannelId =
+			interaction.options.getChannel("media_channel")?.id ?? fallbackChannelId;
+		const newsChannelId =
+			interaction.options.getChannel("news_channel")?.id ?? fallbackChannelId;
+		const guestChatChannelId =
+			interaction.options.getChannel("guest_chat_channel")?.id ?? fallbackChannelId;
+		const familyApplyChannelId =
+			interaction.options.getChannel("family_apply_channel")?.id ?? fallbackChannelId;
+		const resultChannelId =
+			interaction.options.getChannel("result_channel")?.id ?? fallbackChannelId;
+		const guestVoiceChannelId =
+			interaction.options.getChannel("guest_voice_channel")?.id ?? fallbackChannelId;
+
 		const applyUrl =
-			interaction.options.getString("apply_url") ??
+			normalizeUrl(
+				interaction.options.getString("apply_url"),
+				interaction.guildId,
+				familyApplyChannelId
+			) ??
 			`https://discord.com/channels/${interaction.guildId}/${familyApplyChannelId}`;
+
+		const registerUrl = normalizeUrl(
+			interaction.options.getString("register_url", true),
+			interaction.guildId,
+			fallbackChannelId
+		);
+
+		const telegramUrl = normalizeUrl(
+			interaction.options.getString("telegram_url", true),
+			interaction.guildId,
+			fallbackChannelId
+		);
 
 		const container = buildNavigationPanel({
 			bannerUrl,

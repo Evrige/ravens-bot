@@ -1,6 +1,6 @@
 export type ImprovementRequestKey =
-	| "young_ravens"
-	| "ravens"
+	| "young_londo"
+	| "londo"
 	| "main"
 	| "maecenas"
 	| "recruit";
@@ -15,15 +15,15 @@ export const FAMILY_HIERARCHY_ENTRIES = [
 	{
 		title: "Plum",
 		description: "Только вступили в семью и поменяли фамилию.",
-		conditions: "Сменить фамилию на Ravens.",
+		conditions: "Сменить фамилию на Londo.",
 	},
 	{
-		title: "Young Ravens",
+		title: "Young Londo",
 		description: "Новички, которые уже повидали жизнь.",
 		conditions: "Пробыть неделю в семье.",
 	},
 	{
-		title: "Ravens",
+		title: "Londo",
 		description: "Основной состав семьи.",
 		conditions: "Пробыть месяц в семье, а также выполнять контракты.",
 	},
@@ -60,13 +60,13 @@ export const IMPROVEMENT_REQUESTS: Record<
 		requirements: string;
 	}
 > = {
-	young_ravens: {
-		label: "Повышение до Young Ravens",
+	young_londo: {
+		label: "Повышение до Young Londo",
 		description: "Следующий шаг после Plum.",
 		requirements: "Пробыть неделю в семье.",
 	},
-	ravens: {
-		label: "Повышение до Ravens",
+	londo: {
+		label: "Повышение до Londo",
 		description: "Переход в основной состав семьи.",
 		requirements: "Пробыть месяц в семье и выполнять контракты.",
 	},
