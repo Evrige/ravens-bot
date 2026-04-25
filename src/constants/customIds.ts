@@ -140,4 +140,5 @@ export const CUSTOM_COMMAND = {
 	FAMILY_NAVIGATION: "navigation-panel",
 	GIVEAWAY: "giveaway",
 	GAMES: "games",
+	RANK: "rank",
 }

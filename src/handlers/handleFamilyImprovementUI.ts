@@ -23,12 +23,14 @@ import {
 } from "../config/staff";
 import {
 	acceptImprovementRequest,
+	createRankHistoryEntry,
 	createImprovementRequest,
 	declineImprovementRequest,
 	listRecentImprovementRequests,
 	setImprovementRequestMessage,
 } from "../services/familyHistoryStore";
 import { formatDate, truncateText } from "../utils/formatters";
+import { applyFamilyRankChange, FamilyRankKey, findFamilyRankRole } from "../services/familyRanks";
 
 function isPositionRequest(requestKey: ImprovementRequestKey) {
 	return requestKey === "recruit";
@@ -44,49 +46,6 @@ function hasImprovementAccess(interaction: Interaction) {
 	if (!roleCache) return false;
 
 	return FAMILY_HIGH_ROLE_IDS.some((roleId) => roleCache.has(roleId));
-}
-
-const ROLE_NAME_ALIASES: Record<ImprovementRequestKey | "newbie" | "plum", string[]> = {
-	young_londo: ["Young Ravens", "Young Londo"],
-	londo: ["Ravens", "Londo"],
-	main: ["Main"],
-	maecenas: ["Maecenas"],
-	recruit: ["Recruit"],
-	newbie: ["Newbie"],
-	plum: ["Plum"],
-};
-
-function findRoleIdByAliases(interaction: Interaction, aliases: string[]) {
-	const guild = interaction.guild;
-	if (!guild) return null;
-
-	const normalizedAliases = aliases.map((name) => name.trim().toLowerCase());
-	const role = guild.roles.cache.find((entry) =>
-		normalizedAliases.includes(entry.name.trim().toLowerCase())
-	);
-
-	return role?.id ?? null;
-}
-
-function getTargetRoleId(interaction: Interaction, requestKey: ImprovementRequestKey) {
-	const aliases = ROLE_NAME_ALIASES[requestKey];
-	if (!aliases?.length) return null;
-
-	return findRoleIdByAliases(interaction, aliases);
-}
-
-function getHierarchyRoleIds(interaction: Interaction) {
-	const keys: Array<"newbie" | "plum" | ImprovementRequestKey> = [
-		"newbie",
-		"plum",
-		"young_londo",
-		"londo",
-		"main",
-	];
-
-	return keys
-		.map((key) => findRoleIdByAliases(interaction, ROLE_NAME_ALIASES[key]))
-		.filter((roleId): roleId is string => Boolean(roleId));
 }
 
 function buildDecisionButtons(
@@ -233,9 +192,11 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			}
 			const requestKey = requestKeyRaw as ImprovementRequestKey;
 			const applicationId = BigInt(applicationIdRaw);
-			const roleId = getTargetRoleId(interaction, requestKey);
+			const targetRole = interaction.guild
+				? findFamilyRankRole(interaction.guild, requestKey as FamilyRankKey)
+				: null;
 
-			if (!roleId) {
+			if (!targetRole) {
 				await interaction.reply({
 					content: "❌ Для этой заявки не настроена целевая роль.",
 					flags: MessageFlags.Ephemeral,
@@ -261,14 +222,38 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 				return true;
 			}
 
-			if (!isPositionRequest(requestKey) && requestKey !== "maecenas") {
-				const hierarchyRoles = getHierarchyRoleIds(interaction).filter((id) => member.roles.cache.has(id));
-				if (hierarchyRoles.length) {
-					await member.roles.remove(hierarchyRoles).catch(() => {});
-				}
+			const rankChange = await applyFamilyRankChange(
+				member,
+				requestKey as FamilyRankKey,
+				"PROMOTE"
+			);
+
+			if (!rankChange) {
+				await interaction.reply({
+					content: "❌ Не удалось применить изменение ранга.",
+					flags: MessageFlags.Ephemeral,
+				}).catch(() => {});
+				return true;
 			}
 
-			await member.roles.add(roleId).catch(() => {});
+			if (rankChange.changed) {
+				await createRankHistoryEntry({
+					userId: member.id,
+					action: "PROMOTE",
+					rankKey: rankChange.rankKey,
+					rankLabel: rankChange.rankLabel,
+					targetRoleId: rankChange.targetRoleId,
+					targetRoleName: rankChange.targetRoleName,
+					beforeRanks: rankChange.beforeRanks.join(", "),
+					afterRanks: rankChange.afterRanks.join(", "),
+					reason: storedRequest.content,
+					moderatorId: interaction.user.id,
+					source: "IMPROVEMENT_REQUEST",
+					relatedImprovementRequestId: storedRequest.id,
+					applicantUsername: storedRequest.applicantUsername,
+					applicantDisplayName: storedRequest.applicantDisplayName,
+				}).catch(() => {});
+			}
 
 			const infoEmbed = interaction.message.embeds[0]?.toJSON();
 			const requestEmbed = interaction.message.embeds[1]?.toJSON();
@@ -292,7 +277,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			}).catch(() => {});
 
 			const roleName =
-				interaction.guild?.roles.cache.get(roleId)?.name ?? "новая роль";
+				targetRole.name ?? "новая роль";
 			await member.send(
 				`✅ Ваша заявка **${IMPROVEMENT_REQUESTS[requestKey].label}** одобрена.\nВыдана роль: **${roleName}**.`
 			).catch(() => {});
@@ -439,6 +424,10 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 				requestKey,
 				label: request.label,
 				content: (isPositionRequest(requestKey) ? reason : linkOrText) || "Не указано",
+				applicantUsername: interaction.user.username,
+				applicantDisplayName: member?.displayName ?? interaction.user.username,
+				applicantRegisteredAt: interaction.user.createdAt,
+				applicantJoinedAt: member?.joinedAt ?? null,
 			});
 			if (!createdRequest) {
 				await interaction.reply({

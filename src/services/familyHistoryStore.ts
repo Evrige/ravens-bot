@@ -3,6 +3,7 @@ import { prisma } from "../utils/prisma";
 export type ImprovementRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED";
 export type AfkRecordStatus = "ACTIVE" | "ENDED" | "EXPIRED";
 export type MarketOrderStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "DECLINED";
+export type RankHistoryAction = "PROMOTE" | "DEMOTE";
 
 export type ImprovementRequestRecord = {
 	id: bigint;
@@ -10,6 +11,10 @@ export type ImprovementRequestRecord = {
 	requestKey: string;
 	label: string;
 	content: string;
+	applicantUsername: string | null;
+	applicantDisplayName: string | null;
+	applicantRegisteredAt: Date | null;
+	applicantJoinedAt: Date | null;
 	status: ImprovementRequestStatus;
 	createdAt: Date;
 	updatedAt: Date;
@@ -52,6 +57,26 @@ export type MarketOrderRecord = {
 	logChannelId: string | null;
 };
 
+export type RankHistoryRecord = {
+	id: bigint;
+	userId: string;
+	action: RankHistoryAction;
+	rankKey: string;
+	rankLabel: string;
+	targetRoleId: string | null;
+	targetRoleName: string | null;
+	beforeRanks: string | null;
+	afterRanks: string | null;
+	reason: string | null;
+	moderatorId: string;
+	source: string;
+	relatedImprovementRequestId: bigint | null;
+	applicantUsername: string | null;
+	applicantDisplayName: string | null;
+	createdAt: Date;
+	updatedAt: Date;
+};
+
 type CountRow = {
 	status: string;
 	total: bigint;
@@ -70,9 +95,11 @@ function isMissingFamilyHistoryTableError(error: unknown) {
 			|| prismaError?.message?.includes(`relation "AfkRecord" does not exist`)
 			|| prismaError?.message?.includes(`relation "MarketOrder" does not exist`)
 			|| prismaError?.message?.includes(`relation "ImprovementRequest" does not exist`)
+			|| prismaError?.message?.includes(`relation "RankHistory" does not exist`)
 			|| prismaError?.message?.includes(`отношение "AfkRecord" не существует`)
 			|| prismaError?.message?.includes(`отношение "MarketOrder" не существует`)
 			|| prismaError?.message?.includes(`отношение "ImprovementRequest" не существует`)
+			|| prismaError?.message?.includes(`отношение "RankHistory" не существует`)
 		);
 }
 
@@ -81,6 +108,10 @@ export async function createImprovementRequest(input: {
 	requestKey: string;
 	label: string;
 	content: string;
+	applicantUsername?: string | null;
+	applicantDisplayName?: string | null;
+	applicantRegisteredAt?: Date | null;
+	applicantJoinedAt?: Date | null;
 }) {
 	try {
 		const [row] = await prisma.$queryRaw<ImprovementRequestRecord[]>`
@@ -89,6 +120,10 @@ export async function createImprovementRequest(input: {
 				"requestKey",
 				"label",
 				"content",
+				"applicantUsername",
+				"applicantDisplayName",
+				"applicantRegisteredAt",
+				"applicantJoinedAt",
 				"status",
 				"createdAt",
 				"updatedAt"
@@ -98,6 +133,10 @@ export async function createImprovementRequest(input: {
 				${input.requestKey},
 				${input.label},
 				${input.content},
+				${input.applicantUsername ?? null},
+				${input.applicantDisplayName ?? null},
+				${input.applicantRegisteredAt ?? null},
+				${input.applicantJoinedAt ?? null},
 				'PENDING'::"ImprovementRequestStatus",
 				NOW(),
 				NOW()
@@ -233,6 +272,85 @@ export async function getImprovementStats(userId: string) {
 		accepted: Number(rows.find((row) => row.status === "ACCEPTED")?.total ?? 0n),
 		declined: Number(rows.find((row) => row.status === "DECLINED")?.total ?? 0n),
 	};
+}
+
+export async function createRankHistoryEntry(input: {
+	userId: string;
+	action: RankHistoryAction;
+	rankKey: string;
+	rankLabel: string;
+	targetRoleId?: string | null;
+	targetRoleName?: string | null;
+	beforeRanks?: string | null;
+	afterRanks?: string | null;
+	reason?: string | null;
+	moderatorId: string;
+	source: string;
+	relatedImprovementRequestId?: bigint | null;
+	applicantUsername?: string | null;
+	applicantDisplayName?: string | null;
+}) {
+	try {
+		const [row] = await prisma.$queryRaw<RankHistoryRecord[]>`
+			INSERT INTO "RankHistory" (
+				"userId",
+				"action",
+				"rankKey",
+				"rankLabel",
+				"targetRoleId",
+				"targetRoleName",
+				"beforeRanks",
+				"afterRanks",
+				"reason",
+				"moderatorId",
+				"source",
+				"relatedImprovementRequestId",
+				"applicantUsername",
+				"applicantDisplayName",
+				"createdAt",
+				"updatedAt"
+			)
+			VALUES (
+				${input.userId},
+				${input.action},
+				${input.rankKey},
+				${input.rankLabel},
+				${input.targetRoleId ?? null},
+				${input.targetRoleName ?? null},
+				${input.beforeRanks ?? null},
+				${input.afterRanks ?? null},
+				${input.reason ?? null},
+				${input.moderatorId},
+				${input.source},
+				${input.relatedImprovementRequestId ?? null},
+				${input.applicantUsername ?? null},
+				${input.applicantDisplayName ?? null},
+				NOW(),
+				NOW()
+			)
+			RETURNING *
+		`;
+
+		return row ?? null;
+	} catch (error) {
+		if (isMissingFamilyHistoryTableError(error)) return null;
+		throw error;
+	}
+}
+
+export async function listRankHistoryByUser(userId: string, limit = 50) {
+	try {
+		return await prisma.$queryRaw<RankHistoryRecord[]>`
+			SELECT *
+			FROM "RankHistory"
+			WHERE "userId" = ${userId}
+			ORDER BY "createdAt" DESC
+			LIMIT ${limit}
+		`;
+	} catch (error) {
+		if (isMissingFamilyHistoryTableError(error)) return [];
+		throw error;
+	}
 }
 
 export async function getActiveAfkRecord(userId: string) {

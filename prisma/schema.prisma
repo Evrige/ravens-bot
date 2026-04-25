@@ -165,6 +165,10 @@ model ImprovementRequest {
   requestKey    String
   label         String
   content       String
+  applicantUsername   String?
+  applicantDisplayName String?
+  applicantRegisteredAt DateTime?
+  applicantJoinedAt   DateTime?
   status        ImprovementRequestStatus @default(PENDING)
   createdAt     DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
@@ -177,6 +181,29 @@ model ImprovementRequest {
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+}
+
+model RankHistory {
+  id                        BigInt   @id @default(autoincrement())
+  userId                    String
+  action                    String
+  rankKey                   String
+  rankLabel                 String
+  targetRoleId              String?
+  targetRoleName            String?
+  beforeRanks               String?
+  afterRanks                String?
+  reason                    String?
+  moderatorId               String
+  source                    String
+  relatedImprovementRequestId BigInt?
+  applicantUsername         String?
+  applicantDisplayName      String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([moderatorId, createdAt])
 }
 
 model AfkRecord {

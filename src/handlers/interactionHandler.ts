@@ -66,6 +66,7 @@ import { handleFamilyImprovementUI } from "./handleFamilyImprovementUI";
 import { gamesCommand } from "../commands/ravens-family/games";
 import { handleFamilyGamesUI } from "./handleFamilyGamesUI";
 import { handleFamilyVacationUI } from "./handleFamilyVacationUI";
+import { rankCommand } from "../commands/ravens-family/rank";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -98,6 +99,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.FAMILY_NAVIGATION]: navigationPanelCommand,
 	[CUSTOM_COMMAND.GIVEAWAY]: giveawayCommand,
 	[CUSTOM_COMMAND.GAMES]: gamesCommand,
+	[CUSTOM_COMMAND.RANK]: rankCommand,
 	[CUSTOM_COMMAND.DB_HIVE_PAYOUT]: hivePayoutCommand,
 	[CUSTOM_COMMAND.DB_INTERNSHIP]: internshipCommand,
 	[CUSTOM_COMMAND.DB_ORGANISATIONS_LIST]: organisationsListCommand,

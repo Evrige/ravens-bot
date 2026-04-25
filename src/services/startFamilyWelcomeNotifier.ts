@@ -39,13 +39,11 @@ function buildWelcomeContainer(memberMention: string, memberName: string, member
 			},
 			{
 				type: V2.TextDisplay,
-				content: `**${memberName}** присоединился к серверу`,
+				content: `**${memberName}**\n♱ присоединился к серверу`,
 			},
 			{
 				type: V2.TextDisplay,
-				content:
-					`Подавай заявку ${`<#${config.FAMILY_RECRUIT_CHANNEL_ID}>`}\n` +
-					`Вся информация о заявках хранится здесь ${`<#${config.FAMILY_RECRUIT_LOG_ID}>`}`,
+				content: `Подавай заявку <#${CHANNEL_IDS.FAMILY_APPLICATION}>`,
 			},
 			{ type: V2.Separator },
 			{

@@ -41,9 +41,11 @@ export const recruitStatsCommand = {
 
 		} catch (err) {
 			console.error("Ошибка recruit-stats:", err);
-			if (!interaction.replied && !interaction.deferred) {
-				await interaction.reply({ content: "Ошибка при получении статистики" });
+			if (interaction.deferred || interaction.replied) {
+				await interaction.editReply({ content: "❌ Ошибка при получении статистики." }).catch(() => {});
+				return;
 			}
+			await interaction.reply({ content: "❌ Ошибка при получении статистики" }).catch(() => {});
 		}
 	},
 };

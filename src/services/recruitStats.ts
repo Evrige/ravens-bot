@@ -7,6 +7,12 @@ type RecruitCounters = {
 	total: number;
 };
 
+type RecruitApplicationRow = {
+	recruitId: string | null;
+	isAccepted: boolean | null;
+	createdAt: Date;
+};
+
 function createEmptyCountersMap(recruitIds: string[]) {
 	return recruitIds.reduce<Record<string, RecruitCounters>>((acc, recruitId) => {
 		acc[recruitId] = { accepted: 0, total: 0 };
@@ -14,34 +20,45 @@ function createEmptyCountersMap(recruitIds: string[]) {
 	}, {});
 }
 
-async function getRecruitIds(guild: Guild) {
-	await guild.members.fetch();
-
-	return guild.members.cache
-		.filter((member) =>
-			FAMILY_RECRUIT_ROLE_IDS.some((roleId) => member.roles.cache.has(roleId))
-		)
-		.map((member) => member.id);
-}
-
-async function getCounters(recruitIds: string[], from?: Date) {
-	if (!recruitIds.length) return createEmptyCountersMap([]);
-
-	const applications = await prisma.application.findMany({
+async function getApplications() {
+	return prisma.application.findMany({
 		where: {
-			recruitId: { in: recruitIds },
-			...(from ? { createdAt: { gte: from } } : {}),
+			recruitId: { not: null },
 		},
 		select: {
 			recruitId: true,
 			isAccepted: true,
+			createdAt: true,
 		},
 	});
+}
 
+async function getRecruitIds(guild: Guild, applications: RecruitApplicationRow[]) {
+	const candidateIds = Array.from(
+		new Set(applications.map((application) => application.recruitId).filter((id): id is string => Boolean(id)))
+	);
+	if (!candidateIds.length) return [];
+
+	const members = await Promise.all(
+		candidateIds.map((id) => guild.members.fetch(id).catch(() => null))
+	);
+
+	return members
+		.filter((member) => member && FAMILY_RECRUIT_ROLE_IDS.some((roleId) => member.roles.cache.has(roleId)))
+		.map((member) => member!.id);
+}
+
+function getCounters(
+	recruitIds: string[],
+	applications: RecruitApplicationRow[],
+	from?: Date
+) {
 	const counters = createEmptyCountersMap(recruitIds);
 
 	for (const application of applications) {
 		if (!application.recruitId) continue;
+		if (!recruitIds.includes(application.recruitId)) continue;
+		if (from && application.createdAt < from) continue;
 
 		counters[application.recruitId].total += 1;
 		if (application.isAccepted) {
@@ -80,13 +97,12 @@ function formatStatsSection(
 }
 
 export async function buildRecruitStatsEmbed(guild: Guild) {
-	const recruitIds = await getRecruitIds(guild);
+	const applications = await getApplications();
+	const recruitIds = await getRecruitIds(guild, applications);
 	const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-	const [overallCounters, weeklyCounters] = await Promise.all([
-		getCounters(recruitIds),
-		getCounters(recruitIds, weekAgo),
-	]);
+	const overallCounters = getCounters(recruitIds, applications);
+	const weeklyCounters = getCounters(recruitIds, applications, weekAgo);
 
 	const description = [
 		formatStatsSection("Общая статистика", recruitIds, overallCounters),

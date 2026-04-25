@@ -71,6 +71,7 @@ import { upsertFamilyGamesAdminPanel } from "./services/upsertFamilyGamesAdminPa
 import { upsertFamilyGamesPanel } from "./services/upsertFamilyGamesPanel";
 import { startFamilyVacationWatcher } from "./services/startFamilyVacationWatcher";
 import { upsertFamilyVacationPanel } from "./services/upsertFamilyVacationPanel";
+import { rankCommand } from "./commands/ravens-family/rank";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -119,6 +120,7 @@ const familyCommands = [
 	navigationPanelCommand.data.toJSON(),
 	giveawayCommand.data.toJSON(),
 	gamesCommand.data.toJSON(),
+	rankCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
