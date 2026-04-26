@@ -16,7 +16,7 @@ import {
 } from "discord.js";
 import { CUSTOM_IDS } from "../constants/customIds";
 import { CHANNEL_IDS } from "../config/channels";
-import { FAMILY_OWNERS_ROLE_IDS } from "../config/staff";
+import { FAMILY_OWNER_ROLE_IDS } from "../config/staff";
 import {
 	createPromoRequest,
 	createRankHistoryEntry,
@@ -36,7 +36,7 @@ function hasOwnerAccess(interaction: { member?: unknown }) {
 	const roleCache = (interaction.member as any)?.roles?.cache;
 	if (!roleCache) return false;
 
-	return FAMILY_OWNERS_ROLE_IDS.some((roleId) => roleCache.has(roleId));
+	return FAMILY_OWNER_ROLE_IDS.some((roleId) => roleCache.has(roleId));
 }
 
 function buildDecisionButtons(requestId: bigint, disabled = false) {
@@ -166,7 +166,7 @@ async function createPromoThread(interaction: ButtonInteraction) {
 	await thread.members.add(interaction.user.id).catch(() => {});
 	await cleanupPromoSystemMessages(thread);
 
-	const ownerMentions = FAMILY_OWNERS_ROLE_IDS.map((roleId) => `<@&${roleId}>`).join(" ");
+	const ownerMentions = FAMILY_OWNER_ROLE_IDS.map((roleId) => `<@&${roleId}>`).join(" ");
 	const introMessage = await thread.send({
 		content: [
 			`${interaction.user} ${ownerMentions} Привет! Пожалуйста, предоставь видеозапись доказательства активации промокода \`${PROMO_CODE}\`.`,

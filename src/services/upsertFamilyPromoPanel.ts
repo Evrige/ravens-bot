@@ -10,6 +10,7 @@ import path from "path";
 import { prisma } from "../utils/prisma";
 import { CHANNEL_IDS } from "../config/channels";
 import { CUSTOM_IDS } from "../constants/customIds";
+import { FAMILY_LONDEST_ROLE_IDS } from "../config/staff";
 
 const TYPE = "family_promo_panel";
 
@@ -33,6 +34,10 @@ const PROMO_IMAGE_PATHS = PROMO_IMAGE_NAMES.map((name) =>
 	path.join(process.cwd(), "assets", "promo", name)
 );
 
+const LONDEST_ROLE_MENTION = FAMILY_LONDEST_ROLE_IDS[0]
+	? `<@&${FAMILY_LONDEST_ROLE_IDS[0]}>`
+	: "Londest Londo";
+
 function buildPromoPanel() {
 	return {
 		type: V2.Container,
@@ -44,7 +49,7 @@ function buildPromoPanel() {
 			{
 				type: V2.TextDisplay,
 				content:
-					"Вы можете получить доступ к всему автопарку семьи и бонусом **50.000$** с рангом **@Londest Londo**",
+					`Вы можете получить доступ к всему автопарку семьи и бонусом **50.000$** с рангом ${LONDEST_ROLE_MENTION}`,
 			},
 			{ type: V2.Separator },
 			{
