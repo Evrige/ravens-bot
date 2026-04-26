@@ -4,6 +4,7 @@ export type ImprovementRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED";
 export type AfkRecordStatus = "ACTIVE" | "ENDED" | "EXPIRED";
 export type MarketOrderStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "DECLINED";
 export type RankHistoryAction = "PROMOTE" | "DEMOTE";
+export type PromoRequestStatus = "PENDING" | "COMPLETED" | "DECLINED";
 
 export type ImprovementRequestRecord = {
 	id: bigint;
@@ -77,6 +78,20 @@ export type RankHistoryRecord = {
 	updatedAt: Date;
 };
 
+export type PromoRequestRecord = {
+	id: bigint;
+	userId: string;
+	status: PromoRequestStatus;
+	promoCode: string;
+	channelId: string;
+	threadId: string;
+	requestMessageId: string | null;
+	processedById: string | null;
+	processedAt: Date | null;
+	createdAt: Date;
+	updatedAt: Date;
+};
+
 type CountRow = {
 	status: string;
 	total: bigint;
@@ -96,10 +111,12 @@ function isMissingFamilyHistoryTableError(error: unknown) {
 			|| prismaError?.message?.includes(`relation "MarketOrder" does not exist`)
 			|| prismaError?.message?.includes(`relation "ImprovementRequest" does not exist`)
 			|| prismaError?.message?.includes(`relation "RankHistory" does not exist`)
+			|| prismaError?.message?.includes(`relation "PromoRequest" does not exist`)
 			|| prismaError?.message?.includes(`отношение "AfkRecord" не существует`)
 			|| prismaError?.message?.includes(`отношение "MarketOrder" не существует`)
 			|| prismaError?.message?.includes(`отношение "ImprovementRequest" не существует`)
 			|| prismaError?.message?.includes(`отношение "RankHistory" не существует`)
+			|| prismaError?.message?.includes(`отношение "PromoRequest" не существует`)
 		);
 }
 
@@ -349,6 +366,104 @@ export async function listRankHistoryByUser(userId: string, limit = 50) {
 		`;
 	} catch (error) {
 		if (isMissingFamilyHistoryTableError(error)) return [];
+		throw error;
+	}
+}
+
+export async function getActivePromoRequestByUser(userId: string) {
+	try {
+		const [row] = await prisma.$queryRaw<PromoRequestRecord[]>`
+			SELECT *
+			FROM "PromoRequest"
+			WHERE "userId" = ${userId}
+			  AND "status" = 'PENDING'::"PromoRequestStatus"
+			ORDER BY "createdAt" DESC
+			LIMIT 1
+		`;
+
+		return row ?? null;
+	} catch (error) {
+		if (isMissingFamilyHistoryTableError(error)) return null;
+		throw error;
+	}
+}
+
+export async function createPromoRequest(input: {
+	userId: string;
+	promoCode: string;
+	channelId: string;
+	threadId: string;
+	requestMessageId?: string | null;
+}) {
+	try {
+		const [row] = await prisma.$queryRaw<PromoRequestRecord[]>`
+			INSERT INTO "PromoRequest" (
+				"userId",
+				"status",
+				"promoCode",
+				"channelId",
+				"threadId",
+				"requestMessageId",
+				"createdAt",
+				"updatedAt"
+			)
+			VALUES (
+				${input.userId},
+				'PENDING'::"PromoRequestStatus",
+				${input.promoCode},
+				${input.channelId},
+				${input.threadId},
+				${input.requestMessageId ?? null},
+				NOW(),
+				NOW()
+			)
+			RETURNING *
+		`;
+
+		return row ?? null;
+	} catch (error) {
+		if (isMissingFamilyHistoryTableError(error)) return null;
+		throw error;
+	}
+}
+
+export async function getPromoRequest(id: bigint) {
+	try {
+		const [row] = await prisma.$queryRaw<PromoRequestRecord[]>`
+			SELECT *
+			FROM "PromoRequest"
+			WHERE "id" = ${id}
+			LIMIT 1
+		`;
+
+		return row ?? null;
+	} catch (error) {
+		if (isMissingFamilyHistoryTableError(error)) return null;
+		throw error;
+	}
+}
+
+export async function resolvePromoRequest(
+	id: bigint,
+	status: Extract<PromoRequestStatus, "COMPLETED" | "DECLINED">,
+	processedById: string
+) {
+	try {
+		const [row] = await prisma.$queryRaw<PromoRequestRecord[]>`
+			UPDATE "PromoRequest"
+			SET
+				"status" = ${status}::"PromoRequestStatus",
+				"processedById" = ${processedById},
+				"processedAt" = NOW(),
+				"updatedAt" = NOW()
+			WHERE "id" = ${id}
+			  AND "status" = 'PENDING'::"PromoRequestStatus"
+			RETURNING *
+		`;
+
+		return row ?? null;
+	} catch (error) {
+		if (isMissingFamilyHistoryTableError(error)) return null;
 		throw error;
 	}
 }

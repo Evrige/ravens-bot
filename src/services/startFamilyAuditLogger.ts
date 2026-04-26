@@ -34,7 +34,8 @@ type AuditBucket =
 	| "voice"
 	| "members"
 	| "moderation"
-	| "balance";
+	| "balance"
+	| "promo";
 
 type CachedMessageSnapshot = {
 	id: string;
@@ -60,6 +61,7 @@ const THREAD_NAMES: Record<AuditBucket, string> = {
 	members: "Участники и профили",
 	moderation: "Модерация и наказания",
 	balance: "Баланс и монеты",
+	promo: "Промо",
 };
 
 const THREAD_DESCRIPTIONS: Record<AuditBucket, string> = {
@@ -71,6 +73,7 @@ const THREAD_DESCRIPTIONS: Record<AuditBucket, string> = {
 	members: "Служебная тема для логов входа, выхода и изменений профилей участников.",
 	moderation: "Служебная тема для логов банов, киков, таймаутов и других модерационных действий.",
 	balance: "Служебная тема для логов операций с балансом и монетами.",
+	promo: "Служебная тема для логов промо-заявок и подтверждений.",
 };
 
 const messageCache = new Map<string, CachedMessageSnapshot>();

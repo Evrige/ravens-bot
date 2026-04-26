@@ -2,7 +2,6 @@ export type ImprovementRequestKey =
 	| "young_londo"
 	| "londo"
 	| "main"
-	| "maecenas"
 	| "recruit";
 
 export const FAMILY_HIERARCHY_ENTRIES = [
@@ -13,7 +12,7 @@ export const FAMILY_HIERARCHY_ENTRIES = [
 		conditions: "Вступить в семью.",
 	},
 	{
-		title: "Plum",
+		title: "Baby Londo",
 		description: "Только вступили в семью и поменяли фамилию.",
 		conditions: "Сменить фамилию на Londo.",
 	},
@@ -33,11 +32,9 @@ export const FAMILY_HIERARCHY_ENTRIES = [
 		conditions: "По решению старшего состава.",
 	},
 	{
-		title: "Maecenas",
-		description:
-			"Ранг, на котором открывается доступ к крутым машинам, но раз в неделю вы скидываете 50к на фаму для починки этих машин.",
-		conditions:
-			"Если хотите пользоваться машинками, пишите старшему составу. По решению Owner, Dep Owner и High Staff. Можно получить только с мейн ранга.",
+		title: "Londest Londo",
+		description: "Выдаётся владельцами семьи.",
+		conditions: "Условия выдачи: активация промокода SENTICEE на любом из серверов Majestic RP.",
 	},
 	{
 		title: "Recruit",
@@ -62,7 +59,7 @@ export const IMPROVEMENT_REQUESTS: Record<
 > = {
 	young_londo: {
 		label: "Повышение до Young Londo",
-		description: "Следующий шаг после Plum.",
+		description: "Следующий шаг после Baby Londo.",
 		requirements: "Пробыть неделю в семье.",
 	},
 	londo: {
@@ -74,12 +71,6 @@ export const IMPROVEMENT_REQUESTS: Record<
 		label: "Повышение до Main",
 		description: "Ранг для тех, кто уже доказал свою надёжность.",
 		requirements: "Решение старшего состава.",
-	},
-	maecenas: {
-		label: "Получить Maecenas",
-		description: "Открывает доступ к крутым машинам семьи.",
-		requirements:
-			"Нужно быть на Main ранге. Взнос 50к в неделю на починку машин. Решение Owner, Dep Owner и High Staff.",
 	},
 	recruit: {
 		label: "Стать Recruit",

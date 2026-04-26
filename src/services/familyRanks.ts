@@ -23,8 +23,8 @@ export const FAMILY_RANKS: Record<FamilyRankKey, FamilyRankDefinition> = {
 		kind: "hierarchy",
 	},
 	plum: {
-		label: "Plum",
-		aliases: ["Plum"],
+		label: "Baby Londo",
+		aliases: ["Baby Londo", "Plum"],
 		kind: "hierarchy",
 	},
 	young_londo: {
@@ -43,8 +43,8 @@ export const FAMILY_RANKS: Record<FamilyRankKey, FamilyRankDefinition> = {
 		kind: "hierarchy",
 	},
 	maecenas: {
-		label: "Maecenas",
-		aliases: ["Maecenas"],
+		label: "Londest Londo",
+		aliases: ["Londest Londo", "Maecenas"],
 		kind: "badge",
 	},
 	recruit: {
@@ -61,11 +61,11 @@ export const FAMILY_RANKS: Record<FamilyRankKey, FamilyRankDefinition> = {
 
 export const FAMILY_RANK_CHOICES: Array<{ name: string; value: FamilyRankKey }> = [
 	{ name: "Newbie", value: "newbie" },
-	{ name: "Plum", value: "plum" },
+	{ name: "Baby Londo", value: "plum" },
 	{ name: "Young Ravens", value: "young_londo" },
 	{ name: "Ravens", value: "londo" },
 	{ name: "Main", value: "main" },
-	{ name: "Maecenas", value: "maecenas" },
+	{ name: "Londest Londo", value: "maecenas" },
 	{ name: "Recruit", value: "recruit" },
 	{ name: "High Staff", value: "high_staff" },
 ];

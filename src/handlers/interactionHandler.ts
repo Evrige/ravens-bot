@@ -67,6 +67,8 @@ import { gamesCommand } from "../commands/ravens-family/games";
 import { handleFamilyGamesUI } from "./handleFamilyGamesUI";
 import { handleFamilyVacationUI } from "./handleFamilyVacationUI";
 import { rankCommand } from "../commands/ravens-family/rank";
+import { recruitPerformanceCommand } from "../commands/ravens-family/recruit-performance";
+import { handleFamilyPromoModal, handleFamilyPromoUI } from "./handleFamilyPromoUI";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -81,6 +83,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.VOICETOP]: voiceTopCommand,
 	[CUSTOM_COMMAND.STAFF_LIST]: staffListCommand,
 	[CUSTOM_COMMAND.RECRUIT_STATS]: recruitStatsCommand,
+	[CUSTOM_COMMAND.RECRUIT_PERFORMANCE]: recruitPerformanceCommand,
 	[CUSTOM_COMMAND.STREAMER_ADD]: streamerAddCommand,
 	[CUSTOM_COMMAND.STREAMER_REMOVE]: streamerRemoveCommand,
 	[CUSTOM_COMMAND.BALANCE]: balanceCommand,
@@ -131,6 +134,7 @@ export async function handleInteractions(interaction: Interaction) {
 			if (await handleFamilyAfkUI(interaction)) return;
 			if (await handleFamilyVacationUI(interaction)) return;
 			if (await handleFamilyImprovementUI(interaction)) return;
+			if (await handleFamilyPromoUI(interaction)) return;
 			if (await handleFamilyGamesUI(interaction)) return;
 			if (await handleGiveawayUI(interaction)) return;
 
@@ -152,6 +156,7 @@ export async function handleInteractions(interaction: Interaction) {
 			if (await handleFamilyAfkUI(interaction)) return;
 			if (await handleFamilyVacationUI(interaction)) return;
 			if (await handleFamilyImprovementUI(interaction)) return;
+			if (await handleFamilyPromoModal(interaction)) return;
 			if (await handleFamilyGamesUI(interaction)) return;
 			if (await handleGiveawayUI(interaction)) return;
 			await handleCreateCaseModal(interaction);

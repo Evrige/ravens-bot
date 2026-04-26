@@ -72,6 +72,8 @@ import { upsertFamilyGamesPanel } from "./services/upsertFamilyGamesPanel";
 import { startFamilyVacationWatcher } from "./services/startFamilyVacationWatcher";
 import { upsertFamilyVacationPanel } from "./services/upsertFamilyVacationPanel";
 import { rankCommand } from "./commands/ravens-family/rank";
+import { recruitPerformanceCommand } from "./commands/ravens-family/recruit-performance";
+import { upsertFamilyPromoPanel } from "./services/upsertFamilyPromoPanel";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -97,6 +99,7 @@ export const client = new Client({
 const familyCommands = [
 	familyCommand.data.toJSON(),
 	recruitStatsCommand.data.toJSON(),
+	recruitPerformanceCommand.data.toJSON(),
 	staffListCommand.data.toJSON(),
 	warnCommand.data.toJSON(),
 	unwarnCommand.data.toJSON(),
@@ -206,6 +209,7 @@ client.once("ready", async () => {
 	await upsertFamilyGamesPanel(client);
 	await upsertFamilyGamesAdminPanel(client);
 	await upsertFamilyImprovementPanels(client);
+	await upsertFamilyPromoPanel(client);
 	await startRecruitStatsUpdater();
 });
 

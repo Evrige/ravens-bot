@@ -146,6 +146,29 @@ model WeeklyFeeSettings {
   price Int
 }
 
+model MarketSettings {
+  id        Int      @id @default(1)
+  isOpen    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model PromoRequest {
+  id            BigInt             @id @default(autoincrement())
+  userId        String
+  status        PromoRequestStatus @default(PENDING)
+  promoCode     String
+  channelId     String
+  threadId      String
+  requestMessageId String?
+  processedById String?
+  processedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
 model WeeklyFeePayment {
   userId    String @id
   paidFrom  DateTime
@@ -275,6 +298,12 @@ enum AfkRecordStatus {
 enum MarketOrderStatus {
   PENDING
   IN_PROGRESS
+  COMPLETED
+  DECLINED
+}
+
+enum PromoRequestStatus {
+  PENDING
   COMPLETED
   DECLINED
 }

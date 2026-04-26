@@ -162,11 +162,13 @@
     "participants": [
       "589461445469667351"
     ],
-    "winners": [],
-    "ended": false,
-    "announcementSent": false,
-    "announcementMessageId": null,
+    "winners": [
+      "589461445469667351"
+    ],
+    "ended": true,
+    "announcementSent": true,
+    "announcementMessageId": "1497992092574552207",
     "createdAt": "2026-04-23T18:29:58.623Z",
-    "endedAt": null
+    "endedAt": "2026-04-26T16:05:40.133Z"
   }
 ]
