@@ -74,6 +74,8 @@ import { upsertFamilyVacationPanel } from "./services/upsertFamilyVacationPanel"
 import { rankCommand } from "./commands/ravens-family/rank";
 import { recruitPerformanceCommand } from "./commands/ravens-family/recruit-performance";
 import { upsertFamilyPromoPanel } from "./services/upsertFamilyPromoPanel";
+import { autoDeclineFamilyApplicationsForUserLeave } from "./handlers/application/ravens-family/processFamilyApplication";
+import { initFamilyInterviewVoiceTracker } from "./services/familyInterviewVoiceTracker";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -200,6 +202,7 @@ client.once("ready", async () => {
 	startMarketOrdersPanelUpdater(client);
 	startFamilyGamesUpdater(client);
 	initVoiceTracker(client);
+	initFamilyInterviewVoiceTracker(client);
 	initMessageTracker(client);
 	initTempVoice(client);
 	await upsertFamilyListPanel(client);
@@ -217,6 +220,11 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async (interaction) => {
 	await handleInteractions(interaction);
+});
+
+client.on("guildMemberRemove", async (member) => {
+	if (member.guild.id !== config.FAMILY_SERVER_GUID) return;
+	await autoDeclineFamilyApplicationsForUserLeave(member.guild, member.id);
 });
 
 client.login(process.env.TOKEN);

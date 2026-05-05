@@ -68,13 +68,13 @@ async function handleLeave(userId: string, oldState: any, client: any) {
 	if (member.voice.selfMute || member.voice.selfDeaf) return;
 	if (timeSpent < 15_000n) return;
 
-	// ===== НАЧИСЛЕНИЕ МОНЕТ (0.1 за минуту) =====
+	// ===== НАЧИСЛЕНИЕ МОНЕТ (0.0333 за минуту) =====
 	const minutes = Math.floor(timeSpentMs / 60000);
 	if (minutes <= 0) return;
 	const XP_PER_MINUTE = 2;
 	const xpToAdd = BigInt(minutes * XP_PER_MINUTE);
 
-	const coinsToAdd = new Prisma.Decimal(minutes * 0.1); // Decimal хранит дробные монеты
+	const coinsToAdd = new Prisma.Decimal(minutes * 0.0333); // Decimal хранит дробные монеты
 
 	const updated = await prisma.user.upsert({
 		where: { id: userId },

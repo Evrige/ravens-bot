@@ -3,6 +3,7 @@ import {
 	ButtonBuilder,
 	ButtonInteraction,
 	ButtonStyle,
+	Colors,
 	EmbedBuilder,
 	MessageFlags,
 	ModalBuilder,
@@ -27,6 +28,7 @@ import {
 } from "../../services/familyHistoryStore";
 import { decimalToNumber, formatCoins, formatDateTime } from "../../utils/formatters";
 import { updateMarketOrdersPanel } from "../../services/updateMarketOrdersPanel";
+import { sendFamilyAuditCustomEmbed } from "../../services/startFamilyAuditLogger";
 
 function hasMarketOrderAccess(interaction: ButtonInteraction) {
 	const roleCache = (interaction.member as any)?.roles?.cache;
@@ -384,6 +386,7 @@ export async function handleMarketButtons(interaction: ButtonInteraction) {
 
 	const userBalance = decimalToNumber(user.balance);
 	const itemPrice = decimalToNumber(item.price);
+	const nextBalance = userBalance - itemPrice;
 
 	if (userBalance < itemPrice) {
 		return interaction.editReply({
@@ -434,6 +437,19 @@ export async function handleMarketButtons(interaction: ButtonInteraction) {
 	}
 
 	await updateMarketOrdersPanel(interaction.client).catch(() => {});
+
+	const purchaseEmbed = new EmbedBuilder()
+		.setTitle("Покупка в маркете")
+		.setColor(Colors.Blurple)
+		.addFields(
+			{ name: "Покупатель", value: `<@${interaction.user.id}>`, inline: true },
+			{ name: "Товар", value: item.name, inline: true },
+			{ name: "Потрачено", value: `${formatCoins(item.price)} 🪙`, inline: true },
+			{ name: "Баланс после покупки", value: `${formatCoins(nextBalance)} 🪙`, inline: true },
+		)
+		.setTimestamp();
+
+	await sendFamilyAuditCustomEmbed(interaction.client, "balance", purchaseEmbed).catch(() => {});
 
 	return interaction.editReply({
 		content: `✅ Вы купили **${item.name}** за ${formatCoins(item.price)} монет.`,

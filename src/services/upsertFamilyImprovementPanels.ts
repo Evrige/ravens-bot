@@ -10,6 +10,7 @@ import {
 } from "discord.js";
 import { prisma } from "../utils/prisma";
 import { config } from "../config/env";
+import { CHANNEL_IDS } from "../config/channels";
 import {
 	FAMILY_HIERARCHY_ENTRIES,
 	IMPROVEMENT_REQUESTS,
@@ -38,7 +39,9 @@ function buildInfoPanel() {
 		[
 			`**[${index + 1}] ${entry.title}**`,
 			entry.description,
-			`◇ ${entry.conditions}`,
+			entry.title === "Londest Londo"
+				? `◇ ${entry.conditions}\n◇ Подать промо-заявку: <#${CHANNEL_IDS.FAMILY_PROMO}>`
+				: `◇ ${entry.conditions}`,
 		].join("\n")
 	).join("\n\n");
 

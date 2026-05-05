@@ -24,10 +24,10 @@ const V2 = {
 	MediaGallery: 12,
 } as const;
 
-const PROMO_REGISTER_URL = "https://majestic-rp.ru/register?utm_campaign=senticee";
+const PROMO_REGISTER_URL = "https://majestic-rp.ru/register?utm_campaign=londo";
 const PROMO_EXAMPLE_URL = "https://youtu.be/uf-6T81xxVI";
-const PROMO_CODE = "SENTICEE";
-const PROMO_BUTTON_LABEL = "👋 Я ввел промокод SENTICEE";
+const PROMO_CODE = "LONDO";
+const PROMO_BUTTON_LABEL = "👋 Я ввел промокод LONDO";
 
 const PROMO_IMAGE_NAMES = ["1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png"];
 const PROMO_IMAGE_PATHS = PROMO_IMAGE_NAMES.map((name) =>
@@ -55,7 +55,7 @@ function buildPromoPanel() {
 			{
 				type: V2.TextDisplay,
 				content:
-					"> Этот ранг создан как благодарность для людей, которые поддерживают меня как контент-мейкера, регистрируясь с моим промокодом. Вы также можете повышаться в семье по стандартной системе, но для этого потребуется больше времени и доверия с нашей стороны.",
+					"> Этот ранг создан как благодарность для людей, которые поддерживают нашу семью, регистрируясь с нашим промокодом. Вы также можете повышаться в семье по стандартной системе, но для этого потребуется больше времени и доверия с нашей стороны.",
 			},
 			{ type: V2.Separator },
 			{

@@ -36,16 +36,26 @@ function isPositionRequest(requestKey: ImprovementRequestKey) {
 	return requestKey === "recruit";
 }
 
-function buildRoleMentions() {
-	if (!FAMILY_RECRUIT_ROLE_IDS.length) return "";
-	return FAMILY_RECRUIT_ROLE_IDS.map((roleId) => `<@&${roleId}>`).join(" ");
+function buildRoleMentions(requestKey: ImprovementRequestKey) {
+	const roleIds = isPositionRequest(requestKey)
+		? FAMILY_HIGH_ROLE_IDS
+		: Array.from(new Set([...FAMILY_RECRUIT_ROLE_IDS, ...FAMILY_HIGH_ROLE_IDS]));
+
+	if (!roleIds.length) return "";
+	return roleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 }
 
-function hasImprovementAccess(interaction: Interaction) {
+function hasImprovementAccess(interaction: Interaction, requestKey: ImprovementRequestKey) {
 	const roleCache = (interaction.member as any)?.roles?.cache;
 	if (!roleCache) return false;
 
-	return FAMILY_HIGH_ROLE_IDS.some((roleId) => roleCache.has(roleId));
+	if (isPositionRequest(requestKey)) {
+		return FAMILY_HIGH_ROLE_IDS.some((roleId) => roleCache.has(roleId));
+	}
+
+	return [...FAMILY_RECRUIT_ROLE_IDS, ...FAMILY_HIGH_ROLE_IDS].some((roleId) =>
+		roleCache.has(roleId)
+	);
 }
 
 function buildDecisionButtons(
@@ -173,14 +183,6 @@ function buildImprovementModal(requestKey: ImprovementRequestKey) {
 export async function handleFamilyImprovementUI(interaction: Interaction) {
 	if (interaction.isButton()) {
 		if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_IMPROVEMENT_ACCEPT)) {
-			if (!hasImprovementAccess(interaction)) {
-				await interaction.reply({
-					content: "❌ У тебя нет прав на принятие этой заявки.",
-					flags: MessageFlags.Ephemeral,
-				}).catch(() => {});
-				return true;
-			}
-
 			const payload = interaction.customId.slice(CUSTOM_IDS.FAMILY_IMPROVEMENT_ACCEPT.length);
 			const [requestKeyRaw, applicantId, applicationIdRaw] = payload.split(":");
 			if (!applicationIdRaw) {
@@ -191,6 +193,15 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 				return true;
 			}
 			const requestKey = requestKeyRaw as ImprovementRequestKey;
+			if (!hasImprovementAccess(interaction, requestKey)) {
+				await interaction.reply({
+					content: isPositionRequest(requestKey)
+						? "❌ Заявки на Recruit могут обрабатывать только high staff."
+						: "❌ У тебя нет прав на принятие этой заявки.",
+					flags: MessageFlags.Ephemeral,
+				}).catch(() => {});
+				return true;
+			}
 			const applicationId = BigInt(applicationIdRaw);
 			const targetRole = interaction.guild
 				? findFamilyRankRole(interaction.guild, requestKey as FamilyRankKey)
@@ -286,14 +297,6 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 		}
 
 		if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_IMPROVEMENT_DECLINE)) {
-			if (!hasImprovementAccess(interaction)) {
-				await interaction.reply({
-					content: "❌ У тебя нет прав на отклонение этой заявки.",
-					flags: MessageFlags.Ephemeral,
-				}).catch(() => {});
-				return true;
-			}
-
 			const payload = interaction.customId.slice(CUSTOM_IDS.FAMILY_IMPROVEMENT_DECLINE.length);
 			const [requestKeyRaw, applicantId, applicationIdRaw] = payload.split(":");
 			if (!applicationIdRaw) {
@@ -304,6 +307,15 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 				return true;
 			}
 			const requestKey = requestKeyRaw as ImprovementRequestKey;
+			if (!hasImprovementAccess(interaction, requestKey)) {
+				await interaction.reply({
+					content: isPositionRequest(requestKey)
+						? "❌ Заявки на Recruit могут обрабатывать только high staff."
+						: "❌ У тебя нет прав на отклонение этой заявки.",
+					flags: MessageFlags.Ephemeral,
+				}).catch(() => {});
+				return true;
+			}
 			const applicationId = BigInt(applicationIdRaw);
 
 			await interaction.showModal(
@@ -325,14 +337,6 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 	}
 
 	if (interaction.isModalSubmit() && interaction.customId.startsWith(CUSTOM_IDS.FAMILY_IMPROVEMENT_DECLINE_MODAL)) {
-		if (!hasImprovementAccess(interaction)) {
-			await interaction.reply({
-				content: "❌ У тебя нет прав на отклонение этой заявки.",
-				flags: MessageFlags.Ephemeral,
-			}).catch(() => {});
-			return true;
-		}
-
 		const payload = interaction.customId.slice(CUSTOM_IDS.FAMILY_IMPROVEMENT_DECLINE_MODAL.length);
 		const [requestKeyRaw, applicantId, applicationIdRaw, messageId] = payload.split(":");
 		if (!applicationIdRaw) {
@@ -343,6 +347,15 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			return true;
 		}
 		const requestKey = requestKeyRaw as ImprovementRequestKey;
+		if (!hasImprovementAccess(interaction, requestKey)) {
+			await interaction.reply({
+				content: isPositionRequest(requestKey)
+					? "❌ Заявки на Recruit могут обрабатывать только high staff."
+					: "❌ У тебя нет прав на отклонение этой заявки.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
 		const applicationId = BigInt(applicationIdRaw);
 		const reason = interaction.fields
 			.getTextInputValue(CUSTOM_IDS.FAMILY_IMPROVEMENT_DECLINE_REASON_INPUT)
@@ -443,16 +456,6 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 				.setThumbnail(interaction.user.displayAvatarURL())
 				.addFields(
 					{
-						name: "Имя пользователя",
-						value: interaction.user.username,
-						inline: true,
-					},
-					{
-						name: "ID пользователя",
-						value: interaction.user.id,
-						inline: true,
-					},
-					{
 						name: "Дата регистрации",
 						value: formatDate(interaction.user.createdAt),
 						inline: true,
@@ -471,7 +474,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 					}
 				)
 				.setFooter({
-					text: `Improvement Application ID: ${createdRequest.id.toString()} | Applicant ID: ${interaction.user.id}`
+					text: `Improvement Application ID: ${createdRequest.id.toString()}`
 				});
 
 			const requestEmbed = new EmbedBuilder()
@@ -484,7 +487,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 				.setTimestamp();
 
 			const sentMessage = await targetChannel.send({
-				content: buildRoleMentions() || undefined,
+				content: [buildRoleMentions(requestKey), interaction.user.toString()].filter(Boolean).join(" "),
 				embeds: [infoEmbed, requestEmbed],
 				components: [buildDecisionButtons(requestKey, interaction.user.id, createdRequest.id)],
 			}).catch(() => null);

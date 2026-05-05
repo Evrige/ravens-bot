@@ -7,7 +7,9 @@
     "start": "ts-node src/index.ts",
     "build": "tsc",
     "prisma:generate": "prisma generate",
-    "google:token": "tsx scripts/get-google-refresh-token.ts"
+    "google:token": "tsx scripts/get-google-refresh-token.ts",
+    "balance:reset-all": "tsx scripts/reset-all-balances.ts",
+    "balance:divide-by-3": "tsx scripts/divide-all-balances-by-3.ts"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",

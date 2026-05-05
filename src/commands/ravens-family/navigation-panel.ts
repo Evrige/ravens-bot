@@ -26,6 +26,8 @@ const TEMP_CHANNEL_ID = "1474900345300979835";
 const SERVER_NAME = "LONDO";
 const LOGO_FILE_NAME = "londo.png";
 const LOGO_FILE_PATH = path.join(process.cwd(), "assets", "londo.png");
+const PROMO_FILE_NAME = "londo-promo.png";
+const PROMO_FILE_PATH = path.join(process.cwd(), "assets", "londo-promo.png");
 
 function channelRef(channelId: string) {
 	return `<#${channelId}>`;
@@ -102,7 +104,6 @@ function buildNavigationPanel(params: {
 			items: [
 				{
 					media: { url: params.bannerUrl },
-					description: "Навигация по серверу",
 				},
 			],
 		});
@@ -121,7 +122,6 @@ function buildNavigationPanel(params: {
 			accessory: {
 				type: V2.Thumbnail,
 				media: { url: `attachment://${LOGO_FILE_NAME}` },
-				description: "Londo logo",
 			},
 		},
 		{ type: V2.Separator },
@@ -151,7 +151,7 @@ function buildNavigationPanel(params: {
 			params.applyUrl
 		),
 		buildLinkSection(
-			"<:mc:1496997310956310770> Ссылка на регистрацию **/PROMO SENTICEE**",
+			"<:mc:1496997310956310770> Ссылка на регистрацию **/PROMO LONDO**",
 			"Регистрация",
 			params.registerUrl
 		),
@@ -160,6 +160,14 @@ function buildNavigationPanel(params: {
 			"Telegram",
 			params.telegramUrl
 		),
+		{
+			type: V2.MediaGallery,
+			items: [
+				{
+					media: { url: `attachment://${PROMO_FILE_NAME}` },
+				},
+			],
+		},
 		{
 			type: V2.TextDisplay,
 			content: "-# LONDO BOT",
@@ -290,11 +298,14 @@ export const navigationPanelCommand = {
 			) ??
 			`https://discord.com/channels/${interaction.guildId}/${familyApplyChannelId}`;
 
-		const registerUrl = normalizeUrl(
+		const normalizedRegisterUrl = normalizeUrl(
 			interaction.options.getString("register_url", true),
 			interaction.guildId,
 			fallbackChannelId
 		);
+		const registerUrl = normalizedRegisterUrl
+			? normalizedRegisterUrl.replace(/utm_campaign=senticee/gi, "utm_campaign=londo")
+			: null;
 
 		const telegramUrl = normalizeUrl(
 			interaction.options.getString("telegram_url", true),
@@ -319,7 +330,10 @@ export const navigationPanelCommand = {
 		await (channel as TextChannel).send({
 			flags: MessageFlags.IsComponentsV2,
 			components: [container],
-			files: [new AttachmentBuilder(LOGO_FILE_PATH, { name: LOGO_FILE_NAME })],
+			files: [
+				new AttachmentBuilder(LOGO_FILE_PATH, { name: LOGO_FILE_NAME }),
+				new AttachmentBuilder(PROMO_FILE_PATH, { name: PROMO_FILE_NAME }),
+			],
 		});
 
 		return interaction.editReply("✅ Навигационное сообщение отправлено в канал.");

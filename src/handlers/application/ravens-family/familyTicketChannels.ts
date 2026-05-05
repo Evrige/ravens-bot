@@ -24,10 +24,10 @@ async function fetchRecruitCategoryChannels(guild: Guild) {
 	return await guild.channels.fetch().catch(() => guild.channels.cache);
 }
 
-export async function findFamilyTicketChannels(guild: Guild, userId: string) {
+async function collectFamilyTicketChannels(guild: Guild, userId: string) {
 	const channels = await fetchRecruitCategoryChannels(guild);
-	let textChannel: TextChannel | null = null;
-	let voiceChannel: VoiceChannel | null = null;
+	const textChannels: TextChannel[] = [];
+	const voiceChannels: VoiceChannel[] = [];
 
 	for (const channel of channels.values()) {
 		if (!channel || channel.parentId !== config.FAMILY_RECRUIT_CATEGORY_ID) continue;
@@ -37,13 +37,22 @@ export async function findFamilyTicketChannels(guild: Guild, userId: string) {
 		if (!userOverwrite?.allow.has(PermissionFlagsBits.ViewChannel)) continue;
 
 		if (channel.type === ChannelType.GuildText && channel.name.startsWith("чат-")) {
-			textChannel = channel as TextChannel;
+			textChannels.push(channel as TextChannel);
 		}
 
 		if (channel.type === ChannelType.GuildVoice && channel.name.startsWith("обзвон-")) {
-			voiceChannel = channel as VoiceChannel;
+			voiceChannels.push(channel as VoiceChannel);
 		}
 	}
+
+	return { textChannels, voiceChannels };
+}
+
+export async function findFamilyTicketChannels(guild: Guild, userId: string) {
+	const { textChannels, voiceChannels } = await collectFamilyTicketChannels(guild, userId);
+
+	const textChannel = textChannels[0] ?? null;
+	const voiceChannel = voiceChannels[0] ?? null;
 
 	return { textChannel, voiceChannel };
 }
@@ -89,13 +98,13 @@ export async function ensureFamilyTicketChannels(params: {
 }
 
 export async function deleteFamilyTicketChannels(guild: Guild, userId: string) {
-	const { textChannel, voiceChannel } = await findFamilyTicketChannels(guild, userId);
+	const { textChannels, voiceChannels } = await collectFamilyTicketChannels(guild, userId);
 
-	if (textChannel) {
+	for (const textChannel of textChannels) {
 		await textChannel.delete("Заявка обработана").catch(() => {});
 	}
 
-	if (voiceChannel) {
+	for (const voiceChannel of voiceChannels) {
 		await voiceChannel.delete("Заявка обработана").catch(() => {});
 	}
 }

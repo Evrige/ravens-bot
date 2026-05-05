@@ -28,9 +28,9 @@ import { findFamilyRankRole, applyFamilyRankChange } from "../services/familyRan
 import { prisma } from "../utils/prisma";
 import { sendFamilyAuditCustomEmbed } from "../services/startFamilyAuditLogger";
 
-const PROMO_REGISTER_URL = "https://majestic-rp.ru/register?utm_campaign=senticee";
+const PROMO_REGISTER_URL = "https://majestic-rp.ru/register?utm_campaign=londo";
 const PROMO_EXAMPLE_URL = "https://youtu.be/uf-6T81xxVI";
-const PROMO_CODE = "SENTICEE";
+const PROMO_CODE = "LONDO";
 
 function hasOwnerAccess(interaction: { member?: unknown }) {
 	const roleCache = (interaction.member as any)?.roles?.cache;
@@ -163,7 +163,24 @@ async function createPromoThread(interaction: ButtonInteraction) {
 		return true;
 	}
 
-	await thread.members.add(interaction.user.id).catch(() => {});
+	const addedToThread = await thread.members.add(interaction.user.id).then(() => true).catch(() => false);
+	if (!addedToThread) {
+		await thread.delete("Не удалось добавить автора заявки в промо-ветку").catch(() => {});
+		await interaction.editReply(
+			"❌ Не удалось выдать вам доступ к промо-ветке. Проверь права на форумы/ветки у этой роли и канала."
+		);
+		return true;
+	}
+
+	const threadMember = await thread.members.fetch(interaction.user.id).catch(() => null);
+	if (!threadMember) {
+		await thread.delete("Автор заявки не появился в списке участников промо-ветки").catch(() => {});
+		await interaction.editReply(
+			"❌ Discord не добавил вас в промо-ветку. Скорее всего, проблема в правах канала или веток."
+		);
+		return true;
+	}
+
 	await cleanupPromoSystemMessages(thread);
 
 	const ownerMentions = FAMILY_OWNER_ROLE_IDS.map((roleId) => `<@&${roleId}>`).join(" ");
@@ -172,7 +189,7 @@ async function createPromoThread(interaction: ButtonInteraction) {
 			`${interaction.user} ${ownerMentions} Привет! Пожалуйста, предоставь видеозапись доказательства активации промокода \`${PROMO_CODE}\`.`,
 			"**Регистрация:**",
 			`• Перейдите по ссылке: ${PROMO_REGISTER_URL}`,
-			`• Либо введи команду на сервере: \`/promo senticee\``,
+			`• Либо введи команду на сервере: \`/promo londo\``,
 			"Обязательно должны быть видны статик персонажа и название сервера.",
 			`[Пример идеального доказательства](${PROMO_EXAMPLE_URL})`,
 		].join("\n"),
@@ -263,19 +280,13 @@ async function resolvePromo(
 				targetRoleName: result.targetRoleName,
 				beforeRanks: result.beforeRanks.join(", "),
 				afterRanks: result.afterRanks.join(", "),
-				reason: "Промокод SENTICEE подтверждён владельцем семьи",
+				reason: "Промокод LONDO подтверждён владельцем семьи",
 				moderatorId: interaction.user.id,
 				source: "PROMO_REQUEST",
 				applicantUsername: member.user.username,
 				applicantDisplayName: member.displayName,
 			}).catch(() => {});
 		}
-
-		await prisma.user.upsert({
-			where: { id: member.id },
-			update: { balance: { increment: 50000 } },
-			create: { id: member.id, balance: 50000 as any },
-		}).catch(() => {});
 	}
 
 	if (thread?.isThread()) {
