@@ -76,6 +76,10 @@ import { recruitPerformanceCommand } from "./commands/ravens-family/recruit-perf
 import { upsertFamilyPromoPanel } from "./services/upsertFamilyPromoPanel";
 import { autoDeclineFamilyApplicationsForUserLeave } from "./handlers/application/ravens-family/processFamilyApplication";
 import { initFamilyInterviewVoiceTracker } from "./services/familyInterviewVoiceTracker";
+import { coinflipCommand } from "./commands/ravens-family/coinflip";
+import { restoreCoinflipChallenges } from "./handlers/handleCoinflipUI";
+import { diceCommand } from "./commands/ravens-family/dice";
+import { restoreDiceChallenges } from "./handlers/handleDiceUI";
 dotenv.config();
 
 // ==== Создание клиента ====
@@ -124,6 +128,8 @@ const familyCommands = [
 	recruitCommand.data.toJSON(),
 	navigationPanelCommand.data.toJSON(),
 	giveawayCommand.data.toJSON(),
+	coinflipCommand.data.toJSON(),
+	diceCommand.data.toJSON(),
 	gamesCommand.data.toJSON(),
 	rankCommand.data.toJSON(),
 ];
@@ -213,6 +219,8 @@ client.once("ready", async () => {
 	await upsertFamilyGamesAdminPanel(client);
 	await upsertFamilyImprovementPanels(client);
 	await upsertFamilyPromoPanel(client);
+	await restoreCoinflipChallenges(client);
+	await restoreDiceChallenges(client);
 	await startRecruitStatsUpdater();
 });
 

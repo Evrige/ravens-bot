@@ -39,7 +39,7 @@ function isPositionRequest(requestKey: ImprovementRequestKey) {
 function buildRoleMentions(requestKey: ImprovementRequestKey) {
 	const roleIds = isPositionRequest(requestKey)
 		? FAMILY_HIGH_ROLE_IDS
-		: Array.from(new Set([...FAMILY_RECRUIT_ROLE_IDS, ...FAMILY_HIGH_ROLE_IDS]));
+		: FAMILY_RECRUIT_ROLE_IDS;
 
 	if (!roleIds.length) return "";
 	return roleIds.map((roleId) => `<@&${roleId}>`).join(" ");

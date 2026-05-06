@@ -69,6 +69,10 @@ import { handleFamilyVacationUI } from "./handleFamilyVacationUI";
 import { rankCommand } from "../commands/ravens-family/rank";
 import { recruitPerformanceCommand } from "../commands/ravens-family/recruit-performance";
 import { handleFamilyPromoModal, handleFamilyPromoUI } from "./handleFamilyPromoUI";
+import { coinflipCommand } from "../commands/ravens-family/coinflip";
+import { handleCoinflipUI } from "./handleCoinflipUI";
+import { diceCommand } from "../commands/ravens-family/dice";
+import { handleDiceUI } from "./handleDiceUI";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -101,6 +105,8 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.RECRUIT]: recruitCommand,
 	[CUSTOM_COMMAND.FAMILY_NAVIGATION]: navigationPanelCommand,
 	[CUSTOM_COMMAND.GIVEAWAY]: giveawayCommand,
+	[CUSTOM_COMMAND.COINFLIP]: coinflipCommand,
+	[CUSTOM_COMMAND.DICE]: diceCommand,
 	[CUSTOM_COMMAND.GAMES]: gamesCommand,
 	[CUSTOM_COMMAND.RANK]: rankCommand,
 	[CUSTOM_COMMAND.DB_HIVE_PAYOUT]: hivePayoutCommand,
@@ -135,6 +141,8 @@ export async function handleInteractions(interaction: Interaction) {
 			if (await handleFamilyVacationUI(interaction)) return;
 			if (await handleFamilyImprovementUI(interaction)) return;
 			if (await handleFamilyPromoUI(interaction)) return;
+			if (await handleCoinflipUI(interaction)) return;
+			if (await handleDiceUI(interaction)) return;
 			if (await handleFamilyGamesUI(interaction)) return;
 			if (await handleGiveawayUI(interaction)) return;
 
