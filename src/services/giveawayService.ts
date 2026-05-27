@@ -76,6 +76,10 @@ function formatConditionsText(raw: string | null) {
 	return lines.map((line, index) => `${index + 1}. ${line}`).join("\n");
 }
 
+function formatGiveawayAccessRole(roleId: string | null | undefined) {
+	return roleId ? `<@&${roleId}>` : "@everyone";
+}
+
 function buildStatusLine(giveaway: GiveawayRecord, now = new Date()) {
 	if (giveaway.ended) return "🔴 Завершен";
 
@@ -260,6 +264,7 @@ export function buildGiveawayPanel(giveaway: GiveawayRecord, now = new Date()) {
 				`**Статус:** ${buildStatusLine(giveaway, now)}`,
 				`**Победителей:** ${giveaway.winnersCount}`,
 				`**Участников:** ${participantsCount}`,
+				`**Доступ:** ${formatGiveawayAccessRole(giveaway.roleId)}`,
 				`**Закрытие:** ${formatDiscordTimestamp(endAt, "f")}`,
 				`**Организатор:** <@${giveaway.creatorId}>`,
 			].join("\n"),
@@ -290,7 +295,7 @@ export function buildGiveawayPanel(giveaway: GiveawayRecord, now = new Date()) {
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Success)
-				.setLabel("Учавствовать")
+				.setLabel("Участвовать")
 				.setCustomId(`${CUSTOM_IDS.GIVEAWAY_JOIN}${giveaway.id}`)
 				.setDisabled(isExpired)
 		),
@@ -362,6 +367,12 @@ async function sendWinnerAnnouncement(client: Client, giveaway: GiveawayRecord, 
 			});
 		}
 
+		embed.addFields({
+			name: "Доступ",
+			value: formatGiveawayAccessRole(giveaway.roleId),
+			inline: false,
+		});
+
 		const announcement = await channel.send({
 			embeds: [embed],
 		});
@@ -390,6 +401,7 @@ export async function createGiveaway(client: Client, input: {
 	description: string;
 	winnersCount: number;
 	endAt: Date;
+	roleId: string | null;
 }) {
 	const channel = await getPublishGiveawayChannel(client);
 	if (!channel) return { ok: false as const, reason: "channel_not_found" };
@@ -404,6 +416,7 @@ export async function createGiveaway(client: Client, input: {
 		prize: input.prize,
 		imageUrl: input.imageUrl,
 		description: input.description || null,
+		roleId: input.roleId,
 		winnersCount: input.winnersCount,
 		endAt: input.endAt.toISOString(),
 		template: DEFAULT_TEMPLATE,
@@ -416,10 +429,17 @@ export async function createGiveaway(client: Client, input: {
 		endedAt: null,
 	};
 
-	await channel.send({
-		content: "@everyone",
-		allowedMentions: { parse: ["everyone"] },
-	});
+	await channel.send(
+		input.roleId
+			? {
+				content: `<@&${input.roleId}>`,
+				allowedMentions: { roles: [input.roleId] },
+			}
+			: {
+				content: "@everyone",
+				allowedMentions: { parse: ["everyone"] },
+			}
+	);
 
 	const sent = await channel.send({
 		...buildGiveawaySendPayload(draftGiveaway),

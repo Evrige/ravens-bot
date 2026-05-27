@@ -108,7 +108,7 @@ export const CUSTOM_IDS = {
 	GIVEAWAY_PANEL_REROLL_SELECT: "giveaway_panel_reroll_select",
 	GIVEAWAY_MODAL_CREATE: "giveaway_modal_create",
 	GIVEAWAY_MODAL_PRIZE: "giveaway_modal_prize",
-	GIVEAWAY_MODAL_IMAGE_URL: "giveaway_modal_image_url",
+	GIVEAWAY_MODAL_EXTRA: "giveaway_modal_extra",
 	GIVEAWAY_MODAL_CONDITIONS: "giveaway_modal_conditions",
 	GIVEAWAY_MODAL_WINNERS: "giveaway_modal_winners",
 	GIVEAWAY_MODAL_END_TIME: "giveaway_modal_end_time",

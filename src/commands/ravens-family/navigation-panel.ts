@@ -86,6 +86,7 @@ function buildLinkSection(text: string, label: string, url: string | null) {
 function buildNavigationPanel(params: {
 	bannerUrl: string | null;
 	navigationChannelId: string;
+	guideUrl: string | null;
 	mediaChannelId: string;
 	newsChannelId: string;
 	guestChatChannelId: string;
@@ -156,6 +157,11 @@ function buildNavigationPanel(params: {
 			params.registerUrl
 		),
 		buildLinkSection(
+			"📘 Наша памятка по законодательной базе",
+			"Памятка",
+			params.guideUrl
+		),
+		buildLinkSection(
 			"<:telegram:1496991712550064249>  Telegram канал овнера - **SENTICEE.**",
 			"Telegram",
 			params.telegramUrl
@@ -207,6 +213,12 @@ export const navigationPanelCommand = {
 				.setName("navigation_channel")
 				.setDescription("Канал навигации")
 				.addChannelTypes(ChannelType.GuildText)
+				.setRequired(false)
+		)
+		.addStringOption((option) =>
+			option
+				.setName("guide_url")
+				.setDescription("Ссылка на памятку по закон базе")
 				.setRequired(false)
 		)
 		.addChannelOption((option) =>
@@ -277,6 +289,11 @@ export const navigationPanelCommand = {
 
 		const navigationChannelId =
 			interaction.options.getChannel("navigation_channel")?.id ?? fallbackChannelId;
+		const guideUrl = normalizeUrl(
+			interaction.options.getString("guide_url"),
+			interaction.guildId,
+			fallbackChannelId
+		);
 		const mediaChannelId =
 			interaction.options.getChannel("media_channel")?.id ?? fallbackChannelId;
 		const newsChannelId =
@@ -316,6 +333,7 @@ export const navigationPanelCommand = {
 		const container = buildNavigationPanel({
 			bannerUrl,
 			navigationChannelId,
+			guideUrl,
 			mediaChannelId,
 			newsChannelId,
 			guestChatChannelId,

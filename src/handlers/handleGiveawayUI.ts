@@ -4,7 +4,6 @@ import {
 	Interaction,
 	MessageFlags,
 	ModalBuilder,
-	StringSelectMenuInteraction,
 	TextInputBuilder,
 	TextInputStyle,
 } from "discord.js";
@@ -41,12 +40,13 @@ function buildCreateGiveawayModal() {
 		.setRequired(true)
 		.setMaxLength(200);
 
-	const imageInput = new TextInputBuilder()
-		.setCustomId(CUSTOM_IDS.GIVEAWAY_MODAL_IMAGE_URL)
-		.setLabel("Картинка URL")
-		.setStyle(TextInputStyle.Short)
+	const extraInput = new TextInputBuilder()
+		.setCustomId(CUSTOM_IDS.GIVEAWAY_MODAL_EXTRA)
+		.setLabel("Картинка URL и ID роли")
+		.setStyle(TextInputStyle.Paragraph)
 		.setRequired(false)
-		.setPlaceholder("https://...");
+		.setPlaceholder("https://...\n123456789012345678")
+		.setMaxLength(500);
 
 	const conditionsInput = new TextInputBuilder()
 		.setCustomId(CUSTOM_IDS.GIVEAWAY_MODAL_CONDITIONS)
@@ -71,13 +71,67 @@ function buildCreateGiveawayModal() {
 
 	modal.addComponents(
 		new ActionRowBuilder<TextInputBuilder>().addComponents(prizeInput),
-		new ActionRowBuilder<TextInputBuilder>().addComponents(imageInput),
+		new ActionRowBuilder<TextInputBuilder>().addComponents(extraInput),
 		new ActionRowBuilder<TextInputBuilder>().addComponents(conditionsInput),
 		new ActionRowBuilder<TextInputBuilder>().addComponents(winnersInput),
 		new ActionRowBuilder<TextInputBuilder>().addComponents(endTimeInput),
 	);
 
 	return modal;
+}
+
+function normalizeRoleId(value: string) {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	const mentionMatch = trimmed.match(/^<@&(\d+)>$/);
+	const rawId = mentionMatch?.[1] ?? trimmed;
+	return /^\d{15,25}$/.test(rawId) ? rawId : null;
+}
+
+function parseGiveawayExtraField(raw: string) {
+	const lines = raw
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean);
+
+	let imageUrl: string | null = null;
+	let roleId: string | null = null;
+
+	for (const line of lines) {
+		if (!imageUrl && /^https?:\/\//i.test(line)) {
+			imageUrl = line;
+			continue;
+		}
+
+		const normalizedRoleId = normalizeRoleId(line);
+		if (!roleId && normalizedRoleId) {
+			roleId = normalizedRoleId;
+			continue;
+		}
+
+		return {
+			ok: false as const,
+			error: "❌ В поле доп. параметров укажи ссылку на картинку и/или ID роли, каждое значение с новой строки.",
+		};
+	}
+
+	return {
+		ok: true as const,
+		imageUrl,
+		roleId,
+	};
+}
+
+async function memberHasRequiredGiveawayRole(interaction: ButtonInteraction, roleId: string) {
+	const guild = interaction.guild;
+	if (!guild) return false;
+
+	const cachedMember = (interaction.member as any)?.roles?.cache;
+	if (cachedMember?.has?.(roleId)) return true;
+
+	const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+	return !!member?.roles.cache.has(roleId);
 }
 
 async function handleJoinGiveaway(interaction: ButtonInteraction) {
@@ -107,6 +161,17 @@ async function handleJoinGiveaway(interaction: ButtonInteraction) {
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
+	}
+
+	if (giveaway.roleId) {
+		const hasRequiredRole = await memberHasRequiredGiveawayRole(interaction, giveaway.roleId);
+		if (!hasRequiredRole) {
+			await interaction.reply({
+				content: `❌ Участвовать в этом giveaway могут только участники с ролью <@&${giveaway.roleId}>.`,
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
 	}
 
 	let updated = giveaway;
@@ -213,13 +278,23 @@ export async function handleGiveawayUI(interaction: Interaction) {
 		}
 
 		const prize = interaction.fields.getTextInputValue(CUSTOM_IDS.GIVEAWAY_MODAL_PRIZE).trim();
-		const imageUrlRaw = interaction.fields.getTextInputValue(CUSTOM_IDS.GIVEAWAY_MODAL_IMAGE_URL).trim();
+		const extraRaw = interaction.fields.getTextInputValue(CUSTOM_IDS.GIVEAWAY_MODAL_EXTRA).trim();
 		const conditions = interaction.fields.getTextInputValue(CUSTOM_IDS.GIVEAWAY_MODAL_CONDITIONS).trim();
 		const winnersRaw = interaction.fields.getTextInputValue(CUSTOM_IDS.GIVEAWAY_MODAL_WINNERS).trim();
 		const endTimeRaw = interaction.fields.getTextInputValue(CUSTOM_IDS.GIVEAWAY_MODAL_END_TIME).trim();
-		const imageUrl = imageUrlRaw ? imageUrlRaw : null;
+		const extraParsed = parseGiveawayExtraField(extraRaw);
 		const winnersCount = Number(winnersRaw);
 		const endAt = parseGiveawayEndTime(endTimeRaw);
+
+		if (!extraParsed.ok) {
+			await interaction.reply({
+				content: extraParsed.error,
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		const { imageUrl, roleId } = extraParsed;
 
 		if (!prize) {
 			await interaction.reply({
@@ -232,14 +307,6 @@ export async function handleGiveawayUI(interaction: Interaction) {
 		if (!conditions) {
 			await interaction.reply({
 				content: "❌ Укажи условия участия.",
-				flags: MessageFlags.Ephemeral,
-			}).catch(() => {});
-			return true;
-		}
-
-		if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
-			await interaction.reply({
-				content: "❌ Ссылка на картинку должна начинаться с http:// или https://",
 				flags: MessageFlags.Ephemeral,
 			}).catch(() => {});
 			return true;
@@ -261,6 +328,19 @@ export async function handleGiveawayUI(interaction: Interaction) {
 			return true;
 		}
 
+		if (roleId) {
+			const role = interaction.guild?.roles.cache.get(roleId)
+				?? await interaction.guild?.roles.fetch(roleId).catch(() => null);
+
+			if (!role) {
+				await interaction.reply({
+					content: "❌ Роль с таким ID не найдена на сервере.",
+					flags: MessageFlags.Ephemeral,
+				}).catch(() => {});
+				return true;
+			}
+		}
+
 		await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
 
 		const created = await createGiveaway(interaction.client, {
@@ -271,6 +351,7 @@ export async function handleGiveawayUI(interaction: Interaction) {
 			description: conditions,
 			winnersCount,
 			endAt,
+			roleId,
 		});
 
 		if (!created.ok) {
@@ -279,7 +360,7 @@ export async function handleGiveawayUI(interaction: Interaction) {
 		}
 
 		await interaction.editReply(
-			`✅ Розыгрыш создан и отправлен в <#${created.channelId}>.`
+			`✅ Розыгрыш создан и отправлен в <#${created.channelId}>.${roleId ? ` Ограничение по роли: <@&${roleId}>.` : " Доступ: @everyone."}`
 		);
 		return true;
 	}

@@ -11,6 +11,7 @@ export interface GiveawayRecord {
 	prize: string;
 	imageUrl: string | null;
 	description: string | null;
+	roleId?: string | null;
 	winnersCount: number;
 	endAt: string;
 	template: GiveawayTemplateKey;
