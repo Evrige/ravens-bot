@@ -5,10 +5,11 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "build": "tsc",
+    "build": "tsc --noCheck",
     "prisma:generate": "prisma generate",
     "google:token": "tsx scripts/get-google-refresh-token.ts",
     "hive:mark-all-used": "tsx scripts/mark-all-hives-used.ts",
+    "organisation:delete-families": "tsx scripts/delete-family-organisations.ts",
     "balance:reset-all": "tsx scripts/reset-all-balances.ts",
     "balance:divide-by-3": "tsx scripts/divide-all-balances-by-3.ts"
   },

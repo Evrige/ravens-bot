@@ -29,11 +29,6 @@ export function buildFamilyButtons(applicationId: bigint, showCallButton = true)
 			customId: `${CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY}${applicationId.toString()}`,
 			label: "Принять",
 			style: ButtonStyle.Success,
-		}),
-		createButton({
-			customId: `${CUSTOM_IDS.FAMILY_DECLINE_APPLICATION_IN_FAMILY}${applicationId.toString()}`,
-			label: "Отклонить",
-			style: ButtonStyle.Danger,
 		})
 	);
 
@@ -46,6 +41,14 @@ export function buildFamilyButtons(applicationId: bigint, showCallButton = true)
 			})
 		);
 	}
+
+	row.addComponents(
+		createButton({
+			customId: `${CUSTOM_IDS.FAMILY_DECLINE_APPLICATION_IN_FAMILY}${applicationId.toString()}`,
+			label: "Отклонить",
+			style: ButtonStyle.Danger,
+		})
+	);
 
 	return row;
 }
@@ -162,10 +165,6 @@ export async function handleFamilyButtons(interaction: any) {
 		}
 
 		if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY)) {
-			let nicknameFromApplication: string | undefined;
-			const nameField = embed.fields.find((f: any) => f.name === CUSTOM_IDS.APPLICATION_FAMILY_NAME);
-			if (nameField) nicknameFromApplication = nameField.value;
-
 			await interaction.deferUpdate();
 
 			await processFamilyApplication(
@@ -173,7 +172,7 @@ export async function handleFamilyButtons(interaction: any) {
 				applicationId,
 				true,
 				undefined,
-				nicknameFromApplication
+				application.name
 			);
 
 			await interaction.message.delete().catch(() => {});

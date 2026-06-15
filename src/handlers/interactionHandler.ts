@@ -47,6 +47,8 @@ import {
 	handleCaseReplaceModal,
 	handleCreateCaseButton,
 	handleCreateCaseModal,
+	handleDeleteHiveFromForumButton,
+	handleDeleteHiveFromForumModal,
 } from "./cases/handleCases";
 import { hiveStatsCommand } from "../commands/detectives/hive-stats";
 import { handleWeeklyFeeUI } from "./handleWeeklyFeeUI";
@@ -65,6 +67,7 @@ import { handleGiveawayUI } from "./handleGiveawayUI";
 import { handleFamilyImprovementUI } from "./handleFamilyImprovementUI";
 import { gamesCommand } from "../commands/ravens-family/games";
 import { handleFamilyGamesUI } from "./handleFamilyGamesUI";
+import { handleFactionRolesUI } from "./handleFactionRolesUI";
 import { handleFamilyVacationUI } from "./handleFamilyVacationUI";
 import { rankCommand } from "../commands/ravens-family/rank";
 import { recruitPerformanceCommand } from "../commands/ravens-family/recruit-performance";
@@ -73,6 +76,7 @@ import { coinflipCommand } from "../commands/ravens-family/coinflip";
 import { handleCoinflipUI } from "./handleCoinflipUI";
 import { diceCommand } from "../commands/ravens-family/dice";
 import { handleDiceUI } from "./handleDiceUI";
+import { logBotEvent } from "../services/botLogger";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -135,6 +139,7 @@ export async function handleInteractions(interaction: Interaction) {
 		if (interaction.isButton()) {
 			// Эти обработчики у тебя уже умеют возвращать boolean
 			if (await handleCreateCaseButton(interaction)) return;
+			if (await handleDeleteHiveFromForumButton(interaction)) return;
 			if (await handleFamilyListPanelButtons(interaction)) return;
 			if (await handleDBButtons(interaction)) return;
 			if (await handleFamilyAfkUI(interaction)) return;
@@ -144,6 +149,7 @@ export async function handleInteractions(interaction: Interaction) {
 			if (await handleCoinflipUI(interaction)) return;
 			if (await handleDiceUI(interaction)) return;
 			if (await handleFamilyGamesUI(interaction)) return;
+			if (await handleFactionRolesUI(interaction)) return;
 			if (await handleGiveawayUI(interaction)) return;
 
 			// Остальные вызываем как обычные функции
@@ -166,8 +172,10 @@ export async function handleInteractions(interaction: Interaction) {
 			if (await handleFamilyImprovementUI(interaction)) return;
 			if (await handleFamilyPromoModal(interaction)) return;
 			if (await handleFamilyGamesUI(interaction)) return;
+			if (await handleFactionRolesUI(interaction)) return;
 			if (await handleGiveawayUI(interaction)) return;
 			await handleCreateCaseModal(interaction);
+			if (await handleDeleteHiveFromForumModal(interaction)) return;
 			await handleCaseReplaceModal(interaction);
 			await handleDBSubmit(interaction);
 			await handleFamilySubmit(interaction);
@@ -194,6 +202,34 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		console.error(e);
+		logBotEvent({
+			level: "error",
+			title: "Ошибка интеракции",
+			description: "Один из обработчиков кнопки, модалки, меню или команды завершился ошибкой.",
+			error: e,
+			fields: [
+				{
+					name: "Тип",
+					value: String(interaction.type),
+					inline: true,
+				},
+				{
+					name: "Команда",
+					value: interaction.isChatInputCommand() ? interaction.commandName : "-",
+					inline: true,
+				},
+				{
+					name: "Custom ID",
+					value:
+						interaction.isButton() ||
+						interaction.isModalSubmit() ||
+						interaction.isStringSelectMenu()
+							? interaction.customId
+							: "-",
+					inline: false,
+				},
+			],
+		});
 
 		if (interaction.isRepliable()) {
 			if (!interaction.replied && !interaction.deferred) {

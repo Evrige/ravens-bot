@@ -1,8 +1,9 @@
-import { ModalSubmitInteraction, EmbedBuilder, Message, MessageFlags, ChannelType } from "discord.js";
+import { ModalSubmitInteraction, Message, MessageFlags, ChannelType } from "discord.js";
 import { prisma } from "../../../utils/prisma";
 import { CUSTOM_IDS } from "../../../constants/customIds";
 import { DB_STAFF_ROLE_IDS } from "../../../config/staff";
 import { config } from "../../../config/env";
+import { buildHiveResultEmbed } from "./buildHiveResultEmbed";
 
 function hasStaffPerm(interaction: ModalSubmitInteraction) {
 	const member: any = interaction.member;
@@ -80,25 +81,13 @@ export async function handleHiveDeclineReasonSubmit(interaction: ModalSubmitInte
 
 	const moderator = interaction.user;
 
-	const resultEmbed = originalEmbed
-		? EmbedBuilder.from(originalEmbed)
-			.setColor("Red")
-			.addFields(
-				{ name: "❌ Отклонил", value: `<@${moderator.id}>`, inline: true },
-				{ name: "Причина", value: reason || "-", inline: false }
-			)
-			.setFooter({ text: "by Evri" })
-			.setTimestamp()
-		: new EmbedBuilder()
-			.setTitle("Улика")
-			.setColor("Red")
-			.addFields(
-				{ name: "Организация", value: hive.organisation?.name ?? "-", inline: true },
-				{ name: "❌ Отклонил", value: `<@${moderator.id}>`, inline: true },
-				{ name: "Причина", value: reason || "-", inline: false }
-			)
-			.setFooter({ text: "by Evri" })
-			.setTimestamp();
+	const resultEmbed = buildHiveResultEmbed({
+		originalEmbed,
+		accepted: false,
+		moderatorId: moderator.id,
+		reason,
+		organisationName: hive.organisation?.name ?? "-",
+	});
 
 	const logChannel = interaction.guild?.channels.cache.get(config.DB_LOG_CHANNEL_ID);
 	if (logChannel?.isTextBased()) {
@@ -111,16 +100,17 @@ export async function handleHiveDeclineReasonSubmit(interaction: ModalSubmitInte
 	}
 
 	// если других заявок в канале не осталось — удаляем канал
+	let applicationChannelToDelete: any = null;
 	if (ch?.isTextBased() && ch.type === ChannelType.GuildText) {
 		const leftMessages = await ch.messages.fetch({ limit: 50 }).catch(() => null);
 
 		const hasOtherHiveMessages = leftMessages?.some((m: Message) => isHiveApplicationMessage(m)) ?? false;
 
 		if (!hasOtherHiveMessages) {
-			await (ch as any).delete().catch(() => {});
-			return;
+			applicationChannelToDelete = ch;
 		}
 	}
 
 	await interaction.editReply("❌ Отклонено. Отправлено в лог и автору (если ЛС открыты).").catch(() => {});
+	await applicationChannelToDelete?.delete().catch(() => {});
 }

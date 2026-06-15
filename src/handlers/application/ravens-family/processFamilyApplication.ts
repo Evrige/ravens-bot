@@ -166,11 +166,30 @@ export async function processFamilyApplication(
 
 		const authorUser = await interaction.client.users.fetch(updatedApplication.userId).catch(() => null);
 		if (authorUser) {
-			await authorUser.send(
-				accepted
-					? `Поздравляем! Ваша заявка принята ✅`
-					: `К сожалению, ваша заявка отклонена ❌${reason ? `\nПричина: ${reason}` : ""}`
-			).catch(() => {});
+			const dmEmbed = new EmbedBuilder()
+				.setTitle(accepted ? "🎉 Ваша заявка в семью принята" : "❌ Заявка в семью отклонена")
+				.setColor(accepted ? "Green" : "Red")
+				.setDescription(
+					accepted
+						? "Поздравляем! Ваша заявка принята. Добро пожаловать в семью."
+						: "К сожалению, по вашей заявке принято отрицательное решение."
+				)
+				.setTimestamp();
+
+			if (!accepted) {
+				dmEmbed.addFields(
+					{ name: "📌 Причина", value: reason || "Причина не указана", inline: false },
+					{ name: "❌ Кто отклонил", value: `<@${moderator.id}>`, inline: false },
+				);
+			} else {
+				dmEmbed.addFields(
+					{ name: "👤 Игровой никнейм | Статик", value: updatedApplication.name, inline: false },
+					{ name: "✅ Кто принял", value: `<@${moderator.id}>`, inline: true },
+					{ name: "📅 Статус", value: "Принята. Можно проходить дальше по процессу семьи.", inline: false },
+				);
+			}
+
+			await authorUser.send({ embeds: [dmEmbed] }).catch(() => {});
 		}
 
 		if (accepted) {

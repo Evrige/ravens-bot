@@ -3,7 +3,6 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
-	EmbedBuilder,
 	GuildMember,
 	Message,
 	ModalBuilder,
@@ -18,6 +17,7 @@ import { createButton } from "../../../components/createButton";
 import { config } from "../../../config/env";
 import { openDBApplicationModal } from "./openDBApplicationModal";
 import { postHiveToForum } from "./postHiveToOrgForum";
+import { buildHiveResultEmbed } from "./buildHiveResultEmbed";
 
 function isStaff(member: GuildMember) {
 	return member.roles.cache.some((r) => DB_STAFF_ROLE_IDS.includes(r.id));
@@ -345,11 +345,12 @@ export async function handleDBButtons(interaction: any) {
 
 		const moderator = interaction.user;
 
-		const resultEmbed = EmbedBuilder.from(originalEmbed)
-			.setColor("Green")
-			.addFields({ name: "✅ Принял", value: `<@${moderator.id}>`, inline: true })
-			.setFooter({ text: "by Evri" })
-			.setTimestamp();
+		const resultEmbed = buildHiveResultEmbed({
+			originalEmbed,
+			accepted: true,
+			moderatorId: moderator.id,
+			organisationName: hive.organisation?.name,
+		});
 
 		const logChannel = interaction.guild?.channels.cache.get(config.DB_LOG_CHANNEL_ID);
 

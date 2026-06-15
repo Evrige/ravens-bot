@@ -10,8 +10,6 @@ import { Application } from "../../../generated/prisma/client";
 
 export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 	if (interaction.customId === CUSTOM_IDS.FAMILY_MODAL_NEW) {
-		const embed = buildFamilyEmbedFromModal(interaction);
-
 		const ageRaw = interaction.fields.getTextInputValue(
 			CUSTOM_IDS.APPLICATION_FAMILY_AGE
 		).trim();
@@ -49,6 +47,8 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 				howToKnow: interaction.fields.getTextInputValue(CUSTOM_IDS.APPLICATION_FAMILY_HOW_TO_KNOW),
 			},
 		});
+
+		const embed = buildFamilyEmbedFromModal(interaction);
 
 		const channelId = config.FAMILY_RECRUIT_CHANNEL_ID!;
 		const appChannel = interaction.guild?.channels.cache.get(channelId);

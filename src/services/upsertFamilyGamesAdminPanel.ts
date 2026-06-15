@@ -6,6 +6,7 @@ import { FamilyGameRecord, getFamilyGames } from "../utils/familyGamesStore";
 
 const V2 = { Container: 17, Section: 9, TextDisplay: 10, Separator: 14, Button: 2 } as const;
 const BOT_MESSAGE_TYPE = "family_games_admin_panel";
+const MAX_GAMES_IN_ADMIN_PANEL = 4;
 
 function buildAdminPanel(games: FamilyGameRecord[]) {
 	const components: any[] = [
@@ -42,8 +43,9 @@ function buildAdminPanel(games: FamilyGameRecord[]) {
 
 	components.push({ type: V2.Separator }, { type: V2.TextDisplay, content: "### Игры" });
 
-	for (let index = 0; index < games.length; index += 1) {
-		const game = games[index];
+	const visibleGames = games.slice(0, MAX_GAMES_IN_ADMIN_PANEL);
+
+	for (const game of visibleGames) {
 		const voiceMentions = game.voiceChannelIds.map((id) => `<#${id}>`).join(" • ");
 
 		components.push(
@@ -77,9 +79,16 @@ function buildAdminPanel(games: FamilyGameRecord[]) {
 			},
 		);
 
-		if (index !== games.length - 1) {
-			components.push({ type: V2.Separator });
-		}
+	}
+
+	if (games.length > visibleGames.length) {
+		components.push(
+			{ type: V2.Separator },
+			{
+				type: V2.TextDisplay,
+				content: `Показано ${visibleGames.length} из ${games.length} игр. Удали или переименуй остальные через файл данных/каналы, чтобы они снова появились в этой панели.`,
+			},
+		);
 	}
 
 	return { type: V2.Container, components };

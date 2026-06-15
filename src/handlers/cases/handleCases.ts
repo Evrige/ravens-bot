@@ -15,6 +15,7 @@ import { prisma } from "../../utils/prisma";
 import { CUSTOM_IDS } from "../../constants/customIds";
 import { createCaseDocument } from "../../services/googleDocs";
 import { resetHivePanel } from "../../services/upsertHivePanel";
+import { postHiveToForum } from "../application/detectives/postHiveToOrgForum";
 
 /* ===================== IDS ===================== */
 
@@ -157,6 +158,26 @@ function parseOrgIdFromCreateCase(customId: string): bigint | null {
 	}
 }
 
+function parseOrgIdFromDeleteHive(customId: string): bigint | null {
+	if (!customId.startsWith(CUSTOM_IDS.DELETE_HIVE_FROM_FORUM)) return null;
+	const orgIdStr = customId.slice(CUSTOM_IDS.DELETE_HIVE_FROM_FORUM.length);
+	try {
+		return BigInt(orgIdStr);
+	} catch {
+		return null;
+	}
+}
+
+function parseDeleteHiveModal(customId: string): bigint | null {
+	if (!customId.startsWith(CUSTOM_IDS.DELETE_HIVE_FROM_FORUM_MODAL)) return null;
+	const orgIdStr = customId.slice(CUSTOM_IDS.DELETE_HIVE_FROM_FORUM_MODAL.length);
+	try {
+		return BigInt(orgIdStr);
+	} catch {
+		return null;
+	}
+}
+
 function parseCaseButton(customId: string): { action: "accept" | "replace"; caseId: bigint } | null {
 	const parts = customId.split(":");
 	if (parts.length !== 3) return null;
@@ -182,6 +203,54 @@ function parseRecreateDoc(customId: string): bigint | null {
 	}
 }
 
+async function refreshCaseMessagesForCases(interaction: ModalSubmitInteraction, caseIds: bigint[]) {
+	for (const caseId of caseIds) {
+		const c = await prisma.case.findUnique({
+			where: { id: caseId },
+			select: {
+				id: true,
+				caseNumber: true,
+				status: true,
+				docUrl: true,
+				channelId: true,
+				messageId: true,
+				caseHives: {
+					select: {
+						Hive: { select: { id: true, logUrl: true } },
+					},
+				},
+			},
+		});
+
+		if (!c?.channelId || !c.messageId) continue;
+
+		const ch = await interaction.client.channels.fetch(c.channelId).catch(() => null);
+		const msg = ch && ch.isTextBased() ? await ch.messages.fetch(c.messageId).catch(() => null) : null;
+		if (!msg) continue;
+
+		const accepted = (c.status as any) === "ACCEPTED";
+		await msg
+			.edit({
+				embeds: [
+					buildCaseEmbed({
+						caseId: c.id,
+						caseNumber: c.caseNumber,
+						hives: c.caseHives.map((x) => x.Hive),
+						docUrl: c.docUrl ?? null,
+						status: accepted ? "ACCEPTED" : "PENDING",
+					}),
+				],
+				components: buildCaseComponents({
+					caseId: c.id,
+					docUrl: c.docUrl ?? null,
+					showRecreate: !accepted && Boolean(c.docUrl),
+					accepted,
+				}),
+			})
+			.catch(() => {});
+	}
+}
+
 /* ===================== CREATE CASE BUTTON ===================== */
 
 export async function handleCreateCaseButton(interaction: ButtonInteraction) {
@@ -197,6 +266,27 @@ export async function handleCreateCaseButton(interaction: ButtonInteraction) {
 		.setRequired(true);
 
 	modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(numInput));
+
+	await interaction.showModal(modal);
+	return true;
+}
+
+export async function handleDeleteHiveFromForumButton(interaction: ButtonInteraction) {
+	const orgId = parseOrgIdFromDeleteHive(interaction.customId);
+	if (!orgId) return false;
+
+	const modal = new ModalBuilder()
+		.setCustomId(`${CUSTOM_IDS.DELETE_HIVE_FROM_FORUM_MODAL}${orgId.toString()}`)
+		.setTitle("Удалить улику");
+
+	const hiveIdInput = new TextInputBuilder()
+		.setCustomId(CUSTOM_IDS.DELETE_HIVE_FROM_FORUM_INPUT)
+		.setLabel("ID улики")
+		.setPlaceholder("Например: 123")
+		.setStyle(TextInputStyle.Short)
+		.setRequired(true);
+
+	modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(hiveIdInput));
 
 	await interaction.showModal(modal);
 	return true;
@@ -334,6 +424,68 @@ export async function handleCreateCaseModal(interaction: ModalSubmitInteraction)
 	});
 
 	await interaction.editReply(`✅ Кейс сформирован и опубликован. Улик: **${selected.length}**.`);
+	return true;
+}
+
+export async function handleDeleteHiveFromForumModal(interaction: ModalSubmitInteraction) {
+	const orgId = parseDeleteHiveModal(interaction.customId);
+	if (!orgId) return false;
+
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+	const hiveIdRaw = interaction.fields.getTextInputValue(CUSTOM_IDS.DELETE_HIVE_FROM_FORUM_INPUT).trim();
+
+	let hiveId: bigint;
+	try {
+		hiveId = BigInt(hiveIdRaw);
+	} catch {
+		await interaction.editReply("❌ Некорректный ID улики.");
+		return true;
+	}
+
+	const hive = await prisma.hive.findUnique({
+		where: { id: hiveId },
+		include: { organisation: true },
+	});
+
+	if (!hive) {
+		await interaction.editReply("❌ Улика не найдена.");
+		return true;
+	}
+
+	if (hive.organisationId.toString() !== orgId.toString()) {
+		await interaction.editReply("❌ Эта улика относится к другой организации.");
+		return true;
+	}
+
+	const affectedCaseIds = await prisma.caseHive.findMany({
+		where: { hiveId },
+		select: { caseId: true },
+	});
+
+	await prisma.$transaction(async (tx) => {
+		await tx.caseHive.deleteMany({ where: { hiveId } });
+		await tx.hive.update({
+			where: { id: hiveId },
+			data: { isUsed: true },
+		});
+	});
+
+	if (interaction.guild) {
+		await postHiveToForum({
+			guild: interaction.guild,
+			hiveIdStr: hiveId.toString(),
+		}).catch(() => {});
+	}
+
+	await refreshCaseMessagesForCases(interaction, affectedCaseIds.map((x) => x.caseId));
+	await resetHivePanel(interaction.client).catch(() => {});
+
+	const caseText = affectedCaseIds.length
+		? ` Удалена из кейсов: **${affectedCaseIds.length}**.`
+		: "";
+
+	await interaction.editReply(`✅ Улика **${hiveId.toString()}** помечена как использованная.${caseText}`);
 	return true;
 }
 

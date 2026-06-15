@@ -140,7 +140,15 @@ export async function postHiveToForum(opts: {
 	if (!hive || !hive.organisation)
 		return { ok: false, reason: "Hive/Org not found" as const };
 
-	const org = hive.organisation;
+	return refreshOrgHiveForum(opts.guild, hive.organisation.id);
+}
+
+export async function refreshOrgHiveForum(guild: Guild, orgId: bigint) {
+	const org = await prisma.organisation.findUnique({
+		where: { id: orgId },
+	});
+
+	if (!org) return { ok: false, reason: "Hive/Org not found" as const };
 
 	const thread = await ensureOrgThread(guild, org);
 	if (!thread) return { ok: false, reason: "Forum/Thread not found" as const };
@@ -178,7 +186,11 @@ export async function postHiveToForum(opts: {
 		new ButtonBuilder()
 			.setCustomId(`${CUSTOM_IDS.CREATE_CASE}${org.id}`)
 			.setLabel("📄 Сформировать кейс")
-			.setStyle(ButtonStyle.Primary)
+			.setStyle(ButtonStyle.Primary),
+		new ButtonBuilder()
+			.setCustomId(`${CUSTOM_IDS.DELETE_HIVE_FROM_FORUM}${org.id}`)
+			.setLabel("🗑️ Удалить улику")
+			.setStyle(ButtonStyle.Danger)
 	);
 
 	await summaryMsg.edit({
@@ -187,4 +199,24 @@ export async function postHiveToForum(opts: {
 	});
 
 	return { ok: true };
+}
+
+export async function refreshExistingHiveForumSummaries(client: any) {
+	const guild = await client.guilds.fetch(config.FAMILY_SERVER_GUID).catch(() => null);
+	if (!guild) return { ok: false, reason: "Guild not found" as const };
+
+	const organisations = await prisma.organisation.findMany({
+		where: {
+			channelId: { not: null },
+		},
+		select: { id: true },
+	});
+
+	let updated = 0;
+	for (const org of organisations) {
+		const result = await refreshOrgHiveForum(guild, org.id).catch(() => null);
+		if (result?.ok) updated += 1;
+	}
+
+	return { ok: true, updated };
 }

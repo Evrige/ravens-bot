@@ -15,7 +15,7 @@ export async function openFamilyApplicationModal(
 	const nameInput = createInput({
 		id: CUSTOM_IDS.APPLICATION_FAMILY_NAME,
 		label: CUSTOM_IDS.APPLICATION_FAMILY_NAME,
-		placeholder: "Enquiry | статик",
+		placeholder: "Enquiry | статик, без фамилии",
 		style: TextInputStyle.Short
 	});
 

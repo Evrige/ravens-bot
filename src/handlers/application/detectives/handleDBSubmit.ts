@@ -9,9 +9,11 @@ import {
 import { prisma } from "../../../utils/prisma";
 import { CUSTOM_IDS } from "../../../constants/customIds";
 import { DB_STAFF_ROLE_IDS } from "../../../config/staff";
+import { config } from "../../../config/env";
 import { buildHiveEmbed } from "./buildHiveEmbed";
 import { buildDBButtons } from "./handleDBButtons";
 import { resetHivePanel } from "../../../services/upsertHivePanel";
+import { buildHiveResultEmbed } from "./buildHiveResultEmbed";
 
 function typeLabelFromInput(v: string) {
 	return v === "1" ? "Обязательная" : "Не обязательная";
@@ -67,6 +69,19 @@ async function findApplicationMessageByHiveId(channel: any, hiveIdStr: string) {
 				})
 			)
 		) ?? null
+	);
+}
+
+function isAnyHiveApplicationMessage(message: any) {
+	return message.components?.some((row: any) =>
+		row.components?.some((btn: any) => {
+			const id = btn.customId || "";
+			return (
+				id.startsWith(CUSTOM_IDS.ACCEPT) ||
+				id.startsWith(CUSTOM_IDS.DECLINE) ||
+				id.startsWith(CUSTOM_IDS.CHANGE)
+			);
+		})
 	);
 }
 
@@ -164,38 +179,72 @@ export async function handleDBSubmit(interaction: any) {
 			},
 		}).catch(() => {});
 
+		let applicationMessage: any = null;
+		let originalEmbed: any = null;
+
+		const channel = interaction.channel;
+		if (channel?.isTextBased() && channel.type === ChannelType.GuildText) {
+			applicationMessage = await findApplicationMessageByHiveId(channel, hiveIdStr);
+			originalEmbed = applicationMessage?.embeds?.[0] ?? null;
+		}
+
+		const resultEmbed = buildHiveResultEmbed({
+			originalEmbed,
+			accepted: false,
+			moderatorId: interaction.user.id,
+			reason,
+			organisationName: hive.organisation?.name ?? `ID: ${hive.organisationId.toString()}`,
+		});
+
+		const logChannel = interaction.guild?.channels.cache.get(config.DB_LOG_CHANNEL_ID);
+		if (logChannel?.isTextBased()) {
+			await logChannel.send({ embeds: [resultEmbed] }).catch(() => {});
+		}
+
 		try {
 			const user = await interaction.client.users.fetch(hive.userId).catch(() => null);
 			if (user) {
-				const userEmbed = new EmbedBuilder()
-					.setColor("Red")
-					.setTitle("❌ Ваша улика отклонена")
-					.addFields(
-						{
-							name: "Организация",
-							value: hive.organisation?.name ?? `ID: ${hive.organisationId.toString()}`,
-							inline: true,
-						},
-						{ name: "Причина", value: reason, inline: false }
-					)
-					.setFooter({ text: "by Evri" })
-					.setTimestamp();
-
-				await user.send({ embeds: [userEmbed] }).catch(() => {});
+				await user.send({
+					embeds: [
+						new EmbedBuilder()
+							.setColor("Red")
+							.setTitle("❌ Ваша улика отклонена")
+							.setDescription("К сожалению, заявка на подачу улики не прошла проверку.")
+							.addFields(
+								{
+									name: "Организация",
+									value: hive.organisation?.name ?? `ID: ${hive.organisationId.toString()}`,
+									inline: true,
+								},
+								{ name: "Кто отклонил", value: `<@${interaction.user.id}>`, inline: true },
+								{ name: "Причина отказа", value: reason, inline: false }
+							)
+							.setFooter({ text: "by Evri" })
+							.setTimestamp(),
+					],
+				}).catch(() => {});
 			}
 		} catch {}
 
-		// удаляем только сообщение заявки, канал НЕ трогаем
-		const channel = interaction.channel;
+		let applicationChannelToDelete: any = null;
+
+		if (applicationMessage) {
+			await applicationMessage.delete().catch(() => {});
+		}
+
 		if (channel?.isTextBased() && channel.type === ChannelType.GuildText) {
-			const applicationMessage = await findApplicationMessageByHiveId(channel, hiveIdStr);
-			if (applicationMessage) {
-				await applicationMessage.delete().catch(() => {});
+			const leftMessages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+			const hasOtherHiveMessages = leftMessages?.some((m: any) => isAnyHiveApplicationMessage(m)) ?? false;
+
+			if (!hasOtherHiveMessages) {
+				applicationChannelToDelete = channel;
 			}
 		}
 
 		await resetHivePanel(interaction.client).catch(() => {});
-		return interaction.editReply("✅ Улика отклонена.");
+		await interaction.editReply("✅ Улика отклонена и отправлена в лог.").catch(() => {});
+		await applicationChannelToDelete?.delete().catch(() => {});
+		return;
 	}
 
 	// ----------- НОВАЯ УЛИКА ----------- //

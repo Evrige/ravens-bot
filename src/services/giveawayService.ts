@@ -551,13 +551,13 @@ export async function buildEndedGiveawaySelectOptions() {
 	const giveaways = await getAllGiveaways();
 	return giveaways
 		.filter((giveaway) => giveaway.ended)
-		.sort((a, b) => new Date(b.endedAt ?? b.endAt).getTime() - new Date(a.endedAt ?? a.endAt).getTime())
+		.sort((a, b) => new Date(b.endAt).getTime() - new Date(a.endAt).getTime())
 		.slice(0, 25)
 		.map((giveaway) =>
 			new StringSelectMenuOptionBuilder()
 				.setLabel(giveaway.prize.slice(0, 100))
 				.setDescription(
-					`ID: ${giveaway.id} • победителей: ${giveaway.winnersCount}`.slice(0, 100)
+					`Окончание: ${formatDateTime(new Date(giveaway.endAt))} • победителей: ${giveaway.winnersCount}`.slice(0, 100)
 				)
 				.setValue(giveaway.id)
 		);

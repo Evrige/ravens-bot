@@ -80,7 +80,53 @@ import { coinflipCommand } from "./commands/ravens-family/coinflip";
 import { restoreCoinflipChallenges } from "./handlers/handleCoinflipUI";
 import { diceCommand } from "./commands/ravens-family/dice";
 import { restoreDiceChallenges } from "./handlers/handleDiceUI";
+import { startFactionRolesUpdater } from "./services/startFactionRolesUpdater";
+import { upsertFactionRolesPanel } from "./services/upsertFactionRolesPanel";
+import { upsertFactionRolesAdminPanel } from "./services/upsertFactionRolesAdminPanel";
+import { refreshExistingHiveForumSummaries } from "./handlers/application/detectives/postHiveToOrgForum";
+import {
+	flushBotLogQueue,
+	initBotLogger,
+	installBotConsoleBridge,
+	logBotEvent,
+} from "./services/botLogger";
 dotenv.config();
+installBotConsoleBridge();
+
+process.on("unhandledRejection", (error) => {
+	console.error("[process] unhandled rejection:", error);
+	logBotEvent({
+		level: "error",
+		title: "Unhandled rejection",
+		description: "Поймана необработанная ошибка Promise.",
+		error,
+	});
+});
+
+process.on("uncaughtException", (error) => {
+	console.error("[process] uncaught exception:", error);
+	logBotEvent({
+		level: "error",
+		title: "Uncaught exception",
+		description: "Поймана критическая необработанная ошибка процесса.",
+		error,
+	});
+});
+
+async function runStartupTask(name: string, task: () => unknown | Promise<unknown>) {
+	try {
+		await task();
+	} catch (error) {
+		console.error(`[startup] ${name} failed:`, error);
+		logBotEvent({
+			level: "error",
+			title: "Startup task failed",
+			description: `Задача запуска **${name}** завершилась ошибкой.`,
+			error,
+			fields: [{ name: "Task", value: name, inline: true }],
+		});
+	}
+}
 
 // ==== Создание клиента ====
 export const client = new Client({
@@ -97,6 +143,7 @@ export const client = new Client({
 		Partials.GuildMember,
 		Partials.User]
 });
+initBotLogger(client);
 
 // =======================================================
 // Команды для разных серверов
@@ -166,6 +213,16 @@ const serversCommands = [
 
 client.once("ready", async () => {
 	console.log(`Бот запущен как ${client.user?.tag}`);
+	logBotEvent({
+		level: "success",
+		title: "Бот запускается",
+		description: `Бот вошёл в Discord как **${client.user?.tag ?? "unknown"}**.`,
+		fields: [
+			{ name: "Servers", value: String(client.guilds.cache.size), inline: true },
+			{ name: "Node", value: process.version, inline: true },
+		],
+	});
+	await flushBotLogQueue();
 	startWebServer();
 	const rest = new REST({ version: "10" }).setToken(process.env.TOKEN!);
 
@@ -177,8 +234,20 @@ client.once("ready", async () => {
 				{ body: commands }
 			);
 			console.log(`✅ Команды зарегистрированы на сервере ${guildId}`);
+			logBotEvent({
+				level: "success",
+				title: "Команды зарегистрированы",
+				description: `Slash-команды обновлены на сервере \`${guildId}\`.`,
+				fields: [{ name: "Команд", value: String(commands.length), inline: true }],
+			});
 		} catch (error) {
 			console.error(`❌ Ошибка регистрации команд на сервере ${guildId}:`, error);
+			logBotEvent({
+				level: "error",
+				title: "Ошибка регистрации команд",
+				description: `Не удалось зарегистрировать slash-команды на сервере \`${guildId}\`.`,
+				error,
+			});
 		}
 	}
 
@@ -186,53 +255,109 @@ client.once("ready", async () => {
 	try {
 		await syncMembers(client, config.FAMILY_SERVER_GUID);
 		console.log("✅ syncMembers завершён");
+		logBotEvent({
+			level: "success",
+			title: "Синхронизация участников завершена",
+			description: "Участники сервера синхронизированы с базой.",
+		});
 	} catch (e) {
 		console.error("❌ syncMembers error:", e);
+		logBotEvent({
+			level: "error",
+			title: "Ошибка syncMembers",
+			description: "Не удалось синхронизировать участников сервера.",
+			error: e,
+		});
 	}
 
 	// остальное
-	startMarketUpdater(client);
-	startTwitchChecker(client);
-	startWeeklyFeeUpdater(client);
-	startHiveStatsUpdater(client)
-	startStaffListUpdater(client);
-	startOrganisationsPanelUpdater(client)
-	startEventNotifications(client);
-	startFamilyEventsPanelUpdater(client);
-	startFamilyLeaderboardUpdater(client);
-	startGiveawayWatcher(client);
-	startFamilyAuditLogger(client);
-	startFamilyWelcomeNotifier(client);
-	startFamilyAfkWatcher(client);
-	startFamilyVacationWatcher(client);
-	startMarketOrdersPanelUpdater(client);
-	startFamilyGamesUpdater(client);
-	initVoiceTracker(client);
-	initFamilyInterviewVoiceTracker(client);
-	initMessageTracker(client);
-	initTempVoice(client);
-	await upsertFamilyListPanel(client);
-	await upsertFamilyAfkPanel(client);
-	await upsertFamilyVacationPanel(client);
-	await upsertGiveawayPanel(client);
-	await upsertFamilyGamesPanel(client);
-	await upsertFamilyGamesAdminPanel(client);
-	await upsertFamilyImprovementPanels(client);
-	await upsertFamilyPromoPanel(client);
-	await restoreCoinflipChallenges(client);
-	await restoreDiceChallenges(client);
-	await startRecruitStatsUpdater();
+	await runStartupTask("startMarketUpdater", () => startMarketUpdater(client));
+	await runStartupTask("startTwitchChecker", () => startTwitchChecker(client));
+	await runStartupTask("startWeeklyFeeUpdater", () => startWeeklyFeeUpdater(client));
+	await runStartupTask("startHiveStatsUpdater", () => startHiveStatsUpdater(client));
+	await runStartupTask("startStaffListUpdater", () => startStaffListUpdater(client));
+	await runStartupTask("startOrganisationsPanelUpdater", () => startOrganisationsPanelUpdater(client));
+	await runStartupTask("startEventNotifications", () => startEventNotifications(client));
+	await runStartupTask("startFamilyEventsPanelUpdater", () => startFamilyEventsPanelUpdater(client));
+	await runStartupTask("startFamilyLeaderboardUpdater", () => startFamilyLeaderboardUpdater(client));
+	await runStartupTask("startGiveawayWatcher", () => startGiveawayWatcher(client));
+	await runStartupTask("startFamilyAuditLogger", () => startFamilyAuditLogger(client));
+	await runStartupTask("startFamilyWelcomeNotifier", () => startFamilyWelcomeNotifier(client));
+	await runStartupTask("startFamilyAfkWatcher", () => startFamilyAfkWatcher(client));
+	await runStartupTask("startFamilyVacationWatcher", () => startFamilyVacationWatcher(client));
+	await runStartupTask("startMarketOrdersPanelUpdater", () => startMarketOrdersPanelUpdater(client));
+	await runStartupTask("startFamilyGamesUpdater", () => startFamilyGamesUpdater(client));
+	await runStartupTask("startFactionRolesUpdater", () => startFactionRolesUpdater(client));
+	await runStartupTask("initVoiceTracker", () => initVoiceTracker(client));
+	await runStartupTask("initFamilyInterviewVoiceTracker", () => initFamilyInterviewVoiceTracker(client));
+	await runStartupTask("initMessageTracker", () => initMessageTracker(client));
+	await runStartupTask("initTempVoice", () => initTempVoice(client));
+	await runStartupTask("upsertFamilyListPanel", () => upsertFamilyListPanel(client));
+	await runStartupTask("upsertFamilyAfkPanel", () => upsertFamilyAfkPanel(client));
+	await runStartupTask("upsertFamilyVacationPanel", () => upsertFamilyVacationPanel(client));
+	await runStartupTask("upsertGiveawayPanel", () => upsertGiveawayPanel(client));
+	await runStartupTask("upsertFamilyGamesPanel", () => upsertFamilyGamesPanel(client));
+	await runStartupTask("upsertFamilyGamesAdminPanel", () => upsertFamilyGamesAdminPanel(client));
+	await runStartupTask("upsertFactionRolesPanel", () => upsertFactionRolesPanel(client));
+	await runStartupTask("upsertFactionRolesAdminPanel", () => upsertFactionRolesAdminPanel(client));
+	await runStartupTask("refreshExistingHiveForumSummaries", () => refreshExistingHiveForumSummaries(client));
+	await runStartupTask("upsertFamilyImprovementPanels", () => upsertFamilyImprovementPanels(client));
+	await runStartupTask("upsertFamilyPromoPanel", () => upsertFamilyPromoPanel(client));
+	await runStartupTask("restoreCoinflipChallenges", () => restoreCoinflipChallenges(client));
+	await runStartupTask("restoreDiceChallenges", () => restoreDiceChallenges(client));
+	await runStartupTask("startRecruitStatsUpdater", () => startRecruitStatsUpdater());
+	logBotEvent({
+		level: "success",
+		title: "Бот полностью запущен",
+		description: "Все startup-задачи выполнены. Бот готов принимать команды и кнопки.",
+	});
 });
 
 
 
 client.on("interactionCreate", async (interaction) => {
-	await handleInteractions(interaction);
+	try {
+		await handleInteractions(interaction);
+	} catch (error) {
+		console.error("[interactionCreate] handler failed:", error);
+		logBotEvent({
+			level: "error",
+			title: "Interaction handler failed",
+			description: "Главный обработчик Discord-интеракции завершился ошибкой.",
+			error,
+			fields: [
+				{ name: "Type", value: String(interaction.type), inline: true },
+				{
+					name: "ID",
+					value: "customId" in interaction ? String((interaction as any).customId ?? "-") : "-",
+					inline: false,
+				},
+			],
+		});
+	}
 });
 
 client.on("guildMemberRemove", async (member) => {
-	if (member.guild.id !== config.FAMILY_SERVER_GUID) return;
-	await autoDeclineFamilyApplicationsForUserLeave(member.guild, member.id);
+	try {
+		if (member.guild.id !== config.FAMILY_SERVER_GUID) return;
+		await autoDeclineFamilyApplicationsForUserLeave(member.guild, member.id);
+	} catch (error) {
+		console.error("[guildMemberRemove] handler failed:", error);
+		logBotEvent({
+			level: "error",
+			title: "guildMemberRemove failed",
+			description: `Ошибка при обработке выхода участника <@${member.id}>.`,
+			error,
+		});
+	}
 });
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN).catch((error) => {
+	console.error("[startup] client login failed:", error);
+	logBotEvent({
+		level: "error",
+		title: "Discord login failed",
+		description: "Бот не смог войти в Discord. Проверь TOKEN и доступ к Discord.",
+		error,
+	});
+});
