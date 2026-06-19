@@ -10,6 +10,7 @@ import {
 	TextInputBuilder,
 	TextInputStyle,
 	EmbedBuilder,
+	MessageFlags,
 } from "discord.js";
 import { createButton } from "../../../components/createButton";
 import { CUSTOM_IDS } from "../../../constants/customIds";
@@ -18,39 +19,40 @@ import { processFamilyApplication } from "./processFamilyApplication";
 import { FAMILY_HIGH_ROLE_IDS, FAMILY_RECRUIT_ROLE_IDS } from "../../../config/staff";
 import { prisma } from "../../../utils/prisma";
 import { ensureFamilyTicketChannels } from "./familyTicketChannels";
+import { buildFamilyApplicationComponents } from "../../../utils/buildFamilyEmbedFromModal";
 
 function toBigInt(id: string) {
 	return BigInt(id);
 }
 
 export function buildFamilyButtons(applicationId: bigint, showCallButton = true) {
-	const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+	const primaryRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 		createButton({
 			customId: `${CUSTOM_IDS.FAMILY_ACCEPT_APPLICATION_IN_FAMILY}${applicationId.toString()}`,
-			label: "Принять",
+			label: "✅ Принять",
 			style: ButtonStyle.Success,
 		})
 	);
 
 	if (showCallButton) {
-		row.addComponents(
+		primaryRow.addComponents(
 			createButton({
 				customId: `${CUSTOM_IDS.FAMILY_CALL_APPLICATION_IN_FAMILY}${applicationId.toString()}`,
-				label: "Вызвать на обзвон",
+				label: "📞 Вызвать на обзвон",
 				style: ButtonStyle.Primary,
 			})
 		);
 	}
 
-	row.addComponents(
+	const dangerRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
 		createButton({
 			customId: `${CUSTOM_IDS.FAMILY_DECLINE_APPLICATION_IN_FAMILY}${applicationId.toString()}`,
-			label: "Отклонить",
+			label: "❌ Отклонить",
 			style: ButtonStyle.Danger,
 		})
 	);
 
-	return row;
+	return [primaryRow, dangerRow];
 }
 
 function hasAnyRole(member: GuildMember, roleIds: string[]) {
@@ -85,19 +87,12 @@ async function canModerateApplication(interaction: Interaction, applicationId: b
 
 	const callTakenById = application.callTakenById;
 
-	// Пока никто не взял на обзвон — могут все нужные роли
 	if (!callTakenById) {
 		return hasAnyRole(member, [...FAMILY_RECRUIT_ROLE_IDS, ...FAMILY_HIGH_ROLE_IDS]);
 	}
 
-	// После взятия на обзвон:
-	// 1) high роли могут всегда
 	if (hasHighRoles(member)) return true;
-
-	// 2) recruit роли кроме первой могут всегда
 	if (hasRecruitRolesExceptFirst(member)) return true;
-
-	// 3) первая recruit роль — только если именно этот человек взял на обзвон
 	if (hasFirstRecruitRole(member) && interaction.user.id === callTakenById) return true;
 
 	return false;
@@ -140,16 +135,7 @@ export async function handleFamilyButtons(interaction: any) {
 		if (!allowed) {
 			return interaction.reply({
 				content: "У вас нет прав на это действие ❌",
-				ephemeral: true,
-			});
-		}
-
-		const message = interaction.message;
-		const embed = message?.embeds?.[0];
-		if (!embed) {
-			return interaction.reply({
-				content: "Embed заявки не найден ❌",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -160,7 +146,7 @@ export async function handleFamilyButtons(interaction: any) {
 		if (!application) {
 			return interaction.reply({
 				content: "Заявка не найдена ❌",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -209,20 +195,26 @@ export async function handleFamilyButtons(interaction: any) {
 				id: true,
 				userId: true,
 				callTakenById: true,
+				name: true,
+				age: true,
+				target: true,
+				howToKnow: true,
+				link: true,
+				createdAt: true,
 			},
 		});
 
 		if (!application) {
 			return interaction.reply({
 				content: "Заявка не найдена ❌",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
 		if (application.callTakenById) {
 			return interaction.reply({
 				content: `Эта заявка уже взята на обзвон пользователем <@${application.callTakenById}>.`,
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -232,7 +224,7 @@ export async function handleFamilyButtons(interaction: any) {
 		if (!member) {
 			return interaction.reply({
 				content: "Пользователь не найден на сервере ❌",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -254,26 +246,71 @@ export async function handleFamilyButtons(interaction: any) {
 		});
 
 		const originalEmbed = interaction.message.embeds[0];
-		const updatedEmbed = appendCallTakenField(EmbedBuilder.from(originalEmbed.toJSON()), interaction.user.id);
-
 		const newComponents = buildFamilyButtons(applicationId, false);
+		let updatedEmbed: EmbedBuilder | null = null;
 
-		await interaction.update({
-			embeds: [updatedEmbed],
-			components: [newComponents],
-		});
+		if (originalEmbed) {
+			updatedEmbed = appendCallTakenField(EmbedBuilder.from(originalEmbed.toJSON()), interaction.user.id);
+
+			await interaction.update({
+				embeds: [updatedEmbed],
+				components: newComponents,
+			});
+		} else {
+			const updatedComponents = buildFamilyApplicationComponents({
+				applicationId,
+				userId: application.userId,
+				username,
+				name: application.name,
+				age: application.age,
+				target: application.target,
+				howToKnow: application.howToKnow,
+				link: application.link,
+				createdAt: application.createdAt,
+				avatarUrl: member.user.displayAvatarURL({ size: 128 }),
+				callTakenById: interaction.user.id,
+				showCallButton: false,
+			});
+
+			await interaction.update({
+				flags: MessageFlags.IsComponentsV2,
+				components: updatedComponents,
+			} as any);
+		}
 
 		let introSent = false;
 		if (textChannel) {
-			await textChannel.send({
-				content:
-					`<@${userId}> здравствуйте!\n\n` +
-					`Это ваш личный канал для рассмотрения заявки в семью.\n` +
-					`На данный момент вашей заявкой занимается <@${interaction.user.id}>.\n` +
-					`Пожалуйста, ожидайте дальнейшей связи здесь или в голосовом канале обзвона.`,
-				embeds: [updatedEmbed],
-				components: [buildFamilyButtons(applicationId, false)],
-			}).then(() => {
+			const introText =
+				`<@${userId}> здравствуйте!\n\n` +
+				`Это ваш личный канал для рассмотрения заявки в семью.\n` +
+				`На данный момент вашей заявкой занимается <@${interaction.user.id}>.\n` +
+				`Пожалуйста, ожидайте дальнейшей связи здесь или в голосовом канале обзвона.`;
+
+			const payload = {
+				flags: MessageFlags.IsComponentsV2,
+				components: [
+					{
+						type: 10,
+						content: introText,
+					},
+					...buildFamilyApplicationComponents({
+						applicationId,
+						userId: application.userId,
+						username,
+						name: application.name,
+						age: application.age,
+						target: application.target,
+						howToKnow: application.howToKnow,
+						link: application.link,
+						createdAt: application.createdAt,
+						avatarUrl: member.user.displayAvatarURL({ size: 128 }),
+						callTakenById: interaction.user.id,
+						showCallButton: false,
+					}),
+				],
+			};
+
+			await textChannel.send(payload as any).then(() => {
 				introSent = true;
 			}).catch((error) => {
 				console.error("family call intro send error:", error);

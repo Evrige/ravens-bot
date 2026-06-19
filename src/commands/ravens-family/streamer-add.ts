@@ -1,29 +1,15 @@
 import {
 	SlashCommandBuilder,
 	ChatInputCommandInteraction,
-	PermissionFlagsBits
+	PermissionFlagsBits,
+	MessageFlags,
 } from "discord.js";
 import {prisma} from "../../utils/prisma";
 import {CUSTOM_COMMAND} from "../../constants/customIds";
 import {FAMILY_OWNERS_ROLE_IDS} from "../../config/staff";
 import {checkRolesOrReply} from "../../utils/checkRoles";
-
-function extractTwitchLogin(url: string): string | null {
-	try {
-		const parsed = new URL(url);
-
-		if (!parsed.hostname.includes("twitch.tv")) {
-			return null;
-		}
-
-		const pathname = parsed.pathname.replace("/", "");
-		if (!pathname) return null;
-
-		return pathname.toLowerCase();
-	} catch {
-		return null;
-	}
-}
+import { extractTwitchLogin, normalizeTwitchUrl } from "../../utils/streamers";
+import { upsertStreamerPanel } from "../../services/upsertStreamerPanel";
 
 export const streamerAddCommand = {
 	data: new SlashCommandBuilder()
@@ -47,7 +33,7 @@ export const streamerAddCommand = {
 		if (!interaction.guild) {
 			return interaction.reply({
 				content: "Команда доступна только на сервере.",
-				ephemeral: true
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 		// Проверка ролей
@@ -61,7 +47,7 @@ export const streamerAddCommand = {
 		if (!twitchLogin) {
 			return interaction.reply({
 				content: "❌ Неверная ссылка на Twitch.",
-				ephemeral: true
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -71,25 +57,26 @@ export const streamerAddCommand = {
 					guildId: interaction.guild.id,
 					discordUserId: discordUser.id,
 					twitchLogin,
-					twitchUrl
+					twitchUrl: normalizeTwitchUrl(twitchLogin),
 				}
 			});
+			await upsertStreamerPanel(interaction.client);
 
 			return interaction.reply({
-				content: `✅ Стример **${twitchLogin}** добавлен для <@${discordUser.tag}>`
+				content: `✅ Стример **${twitchLogin}** добавлен для <@${discordUser.id}>`
 			});
 		} catch (error: any) {
 			if (error.code === "P2002") {
 				return interaction.reply({
 					content: "⚠️ Этот стример уже добавлен.",
-					ephemeral: true
+					flags: MessageFlags.Ephemeral,
 				});
 			}
 
 			console.error(error);
 			return interaction.reply({
 				content: "❌ Ошибка при сохранении в БД.",
-				ephemeral: true
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 	}

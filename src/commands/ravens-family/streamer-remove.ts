@@ -1,9 +1,10 @@
 // commands/streamer/streamer-remove.ts
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { prisma } from "../../utils/prisma";
 import {FAMILY_OWNERS_ROLE_IDS} from "../../config/staff";
 import {checkRolesOrReply} from "../../utils/checkRoles";
 import {CUSTOM_COMMAND} from "../../constants/customIds";
+import { upsertStreamerPanel } from "../../services/upsertStreamerPanel";
 
 export const streamerRemoveCommand = {
 	data: new SlashCommandBuilder()
@@ -29,16 +30,17 @@ export const streamerRemoveCommand = {
 		if (!exists) {
 			return interaction.reply({
 				content: `⚠️ Стример <@${user.id}> не найден`,
-				ephemeral: true
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
 		// Удаляем стримера
 		await prisma.streamer.delete({ where: { id: exists.id } });
+		await upsertStreamerPanel(interaction.client);
 
 		return interaction.reply({
 			content: `✅ Стример <@${user.id}> удалён из уведомлений`,
-			ephemeral: true
+			flags: MessageFlags.Ephemeral,
 		});
 	}
 };

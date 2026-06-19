@@ -38,11 +38,12 @@ function isPositionRequest(requestKey: ImprovementRequestKey) {
 
 function buildRoleMentions(requestKey: ImprovementRequestKey) {
 	const roleIds = isPositionRequest(requestKey)
-		? FAMILY_HIGH_ROLE_IDS
+		? [...FAMILY_RECRUIT_ROLE_IDS.slice(1), ...FAMILY_HIGH_ROLE_IDS]
 		: FAMILY_RECRUIT_ROLE_IDS;
 
-	if (!roleIds.length) return "";
-	return roleIds.map((roleId) => `<@&${roleId}>`).join(" ");
+	const uniqueRoleIds = [...new Set(roleIds.filter(Boolean))];
+	if (!uniqueRoleIds.length) return "";
+	return uniqueRoleIds.map((roleId) => `<@&${roleId}>`).join(" ");
 }
 
 function hasImprovementAccess(interaction: Interaction, requestKey: ImprovementRequestKey) {
@@ -50,7 +51,9 @@ function hasImprovementAccess(interaction: Interaction, requestKey: ImprovementR
 	if (!roleCache) return false;
 
 	if (isPositionRequest(requestKey)) {
-		return FAMILY_HIGH_ROLE_IDS.some((roleId) => roleCache.has(roleId));
+		return [...FAMILY_RECRUIT_ROLE_IDS.slice(1), ...FAMILY_HIGH_ROLE_IDS].some(
+			(roleId) => roleId && roleCache.has(roleId)
+		);
 	}
 
 	return [...FAMILY_RECRUIT_ROLE_IDS, ...FAMILY_HIGH_ROLE_IDS].some((roleId) =>
@@ -196,7 +199,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			if (!hasImprovementAccess(interaction, requestKey)) {
 				await interaction.reply({
 					content: isPositionRequest(requestKey)
-						? "❌ Заявки на Recruit могут обрабатывать только high staff."
+						? "❌ Заявки на Recruit могут обрабатывать high staff и роли Recruit, кроме первой."
 						: "❌ У тебя нет прав на принятие этой заявки.",
 					flags: MessageFlags.Ephemeral,
 				}).catch(() => {});
@@ -310,7 +313,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 			if (!hasImprovementAccess(interaction, requestKey)) {
 				await interaction.reply({
 					content: isPositionRequest(requestKey)
-						? "❌ Заявки на Recruit могут обрабатывать только high staff."
+						? "❌ Заявки на Recruit могут обрабатывать high staff и роли Recruit, кроме первой."
 						: "❌ У тебя нет прав на отклонение этой заявки.",
 					flags: MessageFlags.Ephemeral,
 				}).catch(() => {});
@@ -350,7 +353,7 @@ export async function handleFamilyImprovementUI(interaction: Interaction) {
 		if (!hasImprovementAccess(interaction, requestKey)) {
 			await interaction.reply({
 				content: isPositionRequest(requestKey)
-					? "❌ Заявки на Recruit могут обрабатывать только high staff."
+					? "❌ Заявки на Recruit могут обрабатывать high staff и роли Recruit, кроме первой."
 					: "❌ У тебя нет прав на отклонение этой заявки.",
 				flags: MessageFlags.Ephemeral,
 			}).catch(() => {});

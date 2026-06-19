@@ -101,11 +101,11 @@
     "template": "sentice",
     "participants": [],
     "winners": [],
-    "ended": false,
-    "announcementSent": false,
-    "announcementMessageId": null,
+    "ended": true,
+    "announcementSent": true,
+    "announcementMessageId": "1516100107156717609",
     "createdAt": "2026-04-23T18:23:54.716Z",
-    "endedAt": null
+    "endedAt": "2026-06-15T15:20:31.831Z"
   },
   {
     "id": "gw_mobtb84gpcive9",
@@ -121,11 +121,11 @@
     "template": "sentice",
     "participants": [],
     "winners": [],
-    "ended": false,
-    "announcementSent": false,
-    "announcementMessageId": null,
+    "ended": true,
+    "announcementSent": true,
+    "announcementMessageId": "1516100112600924190",
     "createdAt": "2026-04-23T18:25:46.720Z",
-    "endedAt": null
+    "endedAt": "2026-06-15T15:20:32.912Z"
   },
   {
     "id": "gw_mobteih906ze47",
@@ -141,11 +141,11 @@
     "template": "sentice",
     "participants": [],
     "winners": [],
-    "ended": false,
-    "announcementSent": false,
-    "announcementMessageId": null,
+    "ended": true,
+    "announcementSent": true,
+    "announcementMessageId": "1516100116832981185",
     "createdAt": "2026-04-23T18:28:20.109Z",
-    "endedAt": null
+    "endedAt": "2026-06-15T15:20:34.097Z"
   },
   {
     "id": "gw_mobtgmhranua8w",

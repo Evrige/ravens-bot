@@ -1,6 +1,5 @@
 import { CUSTOM_IDS } from "../../../constants/customIds";
-import { buildFamilyEmbedFromModal } from "../../../utils/buildFamilyEmbedFromModal";
-import { buildFamilyButtons } from "./handleFamilyButtons";
+import { buildFamilyApplicationComponents } from "../../../utils/buildFamilyEmbedFromModal";
 import { processFamilyApplication } from "./processFamilyApplication";
 import { config } from "../../../config/env";
 import { FAMILY_RECRUIT_ROLE_IDS } from "../../../config/staff";
@@ -17,7 +16,7 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 		if (!/^\d+$/.test(ageRaw)) {
 			return interaction.reply({
 				content: "❌ Возраст должен быть указан числом (например: 18).",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -25,7 +24,7 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 		if (age < 14 || age > 100) {
 			return interaction.reply({
 				content: "❌ Укажите корректный возраст.",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
@@ -48,19 +47,16 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 			},
 		});
 
-		const embed = buildFamilyEmbedFromModal(interaction);
-
 		const channelId = config.FAMILY_RECRUIT_CHANNEL_ID!;
 		const appChannel = interaction.guild?.channels.cache.get(channelId);
 
 		if (!appChannel?.isTextBased()) {
 			return interaction.reply({
 				content: "Канал для заявок не найден ❌",
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 
-		const buttons = buildFamilyButtons(application.id);
 		const mentionText = FAMILY_RECRUIT_ROLE_IDS.map((id) => `<@&${id}>`).join(" ");
 
 		let historyText = "";
@@ -89,11 +85,31 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 			historyText = "Старых заявок не найдено.";
 		}
 
-		const sentMessage = await appChannel.send({
-			content: `${mentionText}\n\n**История заявок пользователя:**\n${historyText}`,
-			embeds: [embed],
-			components: [buttons]
+		const components = buildFamilyApplicationComponents({
+			applicationId: application.id,
+			userId: interaction.user.id,
+			username: interaction.user.username,
+			name: application.name,
+			age: application.age,
+			target: application.target,
+			howToKnow: application.howToKnow,
+			link: application.link,
+			createdAt: application.createdAt,
+			avatarUrl: interaction.user.displayAvatarURL({ size: 128 }),
+			showCallButton: true,
 		});
+
+		const sentMessage = await appChannel.send({
+			flags: MessageFlags.IsComponentsV2,
+			components: [
+				{
+					type: 10,
+					content: `${mentionText}\n\n**История заявок пользователя:**\n${historyText}`,
+				},
+				...components,
+			],
+			allowedMentions: { roles: FAMILY_RECRUIT_ROLE_IDS },
+		} as any);
 
 		await prisma.application.update({
 			where: { id: application.id },
@@ -104,7 +120,7 @@ export async function handleFamilySubmit(interaction: ModalSubmitInteraction) {
 
 		return interaction.reply({
 			content: "✅ Ваша заявка отправлена, ожидайте.",
-			ephemeral: true,
+			flags: MessageFlags.Ephemeral,
 		});
 	}
 

@@ -96,7 +96,15 @@ async function checkStreams(client: Client) {
 						.setURL(`https://www.twitch.tv/${streamer.twitchLogin}`)
 				);
 
-			await channel.send({ content: `<@&${config.FAMILY_FAMQ_ROLE_ID}>`, embeds: [embed], components: [row] });
+			await channel.send({
+				content: `<@&${config.FAMILY_FAMQ_ROLE_ID}> <@${streamer.discordUserId}> начал(а) стрим!`,
+				embeds: [embed],
+				components: [row],
+				allowedMentions: {
+					roles: [config.FAMILY_FAMQ_ROLE_ID],
+					users: [streamer.discordUserId],
+				},
+			});
 
 			await prisma.streamer.update({
 				where: { id: streamer.id },

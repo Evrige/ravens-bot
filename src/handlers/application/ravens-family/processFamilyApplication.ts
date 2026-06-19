@@ -11,6 +11,13 @@ import {
 async function safeInteractionResponse(interaction: any, content: string) {
 	try {
 		if (interaction.deferred) {
+			if (interaction.isMessageComponent?.()) {
+				return await interaction.followUp({
+					content,
+					flags: MessageFlags.Ephemeral,
+				});
+			}
+
 			return await interaction.editReply({ content });
 		}
 
@@ -27,6 +34,15 @@ async function safeInteractionResponse(interaction: any, content: string) {
 		});
 	} catch (error) {
 		console.error("safeInteractionResponse error:", error);
+
+		try {
+			if (interaction.isRepliable?.()) {
+				return await interaction.followUp({
+					content,
+					flags: MessageFlags.Ephemeral,
+				});
+			}
+		} catch {}
 	}
 }
 
@@ -183,9 +199,7 @@ export async function processFamilyApplication(
 				);
 			} else {
 				dmEmbed.addFields(
-					{ name: "👤 Игровой никнейм | Статик", value: updatedApplication.name, inline: false },
 					{ name: "✅ Кто принял", value: `<@${moderator.id}>`, inline: true },
-					{ name: "📅 Статус", value: "Принята. Можно проходить дальше по процессу семьи.", inline: false },
 				);
 			}
 

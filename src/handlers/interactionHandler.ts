@@ -77,6 +77,7 @@ import { handleCoinflipUI } from "./handleCoinflipUI";
 import { diceCommand } from "../commands/ravens-family/dice";
 import { handleDiceUI } from "./handleDiceUI";
 import { logBotEvent } from "../services/botLogger";
+import { handleStreamerPanelUI } from "./handleStreamerPanelUI";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -138,6 +139,7 @@ export async function handleInteractions(interaction: Interaction) {
 
 		if (interaction.isButton()) {
 			// Эти обработчики у тебя уже умеют возвращать boolean
+			if (await handleStreamerPanelUI(interaction)) return;
 			if (await handleCreateCaseButton(interaction)) return;
 			if (await handleDeleteHiveFromForumButton(interaction)) return;
 			if (await handleFamilyListPanelButtons(interaction)) return;
@@ -167,6 +169,7 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		if (interaction.isModalSubmit()) {
+			if (await handleStreamerPanelUI(interaction)) return;
 			if (await handleFamilyAfkUI(interaction)) return;
 			if (await handleFamilyVacationUI(interaction)) return;
 			if (await handleFamilyImprovementUI(interaction)) return;

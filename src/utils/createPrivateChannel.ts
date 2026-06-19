@@ -21,6 +21,10 @@ export async function createPrivateChannel({
 																			roleIds,
 																			userLimit,
 																		}: CreatePrivateChannelOptions) {
+	const isSnowflake = (value: string | undefined | null) => /^\d{17,20}$/.test(value ?? "");
+	const validRoleIds = roleIds
+		.filter((roleId) => isSnowflake(roleId))
+		.filter((roleId) => guild.roles.cache.has(roleId));
 
 	const overwrites = [
 		{
@@ -47,7 +51,7 @@ export async function createPrivateChannel({
 				PermissionFlagsBits.Speak,
 			],
 		},
-		...roleIds.map(roleId => ({
+		...validRoleIds.map(roleId => ({
 			id: roleId,
 			allow: [
 				PermissionFlagsBits.ViewChannel,

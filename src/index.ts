@@ -90,6 +90,7 @@ import {
 	installBotConsoleBridge,
 	logBotEvent,
 } from "./services/botLogger";
+import { upsertStreamerPanel } from "./services/upsertStreamerPanel";
 dotenv.config();
 installBotConsoleBridge();
 
@@ -191,22 +192,22 @@ const hiveCommands = [
 	organisationsListCommand.data.toJSON(),
 ];
 
-// const serversCommands = [
-// 	{
-// 		guildId: process.env.FAMILY_SERVER_GUID!,
-// 		commands: familyCommands
-// 	},
-// 	{
-// 		guildId: process.env.DB_SERVER_GUID!,
-// 		commands: hiveCommands
-// 	}
-// ];
 const serversCommands = [
 	{
 		guildId: process.env.FAMILY_SERVER_GUID!,
-		commands: [...familyCommands, ...hiveCommands]
+		commands: familyCommands
+	},
+	{
+		guildId: process.env.DB_SERVER_GUID!,
+		commands: hiveCommands
 	}
 ];
+// const serversCommands = [
+// 	{
+// 		guildId: process.env.FAMILY_SERVER_GUID!,
+// 		commands: [...familyCommands, ...hiveCommands]
+// 	}
+// ];
 // =======================================================
 // Ready
 // =======================================================
@@ -300,6 +301,7 @@ client.once("ready", async () => {
 	await runStartupTask("upsertFamilyGamesAdminPanel", () => upsertFamilyGamesAdminPanel(client));
 	await runStartupTask("upsertFactionRolesPanel", () => upsertFactionRolesPanel(client));
 	await runStartupTask("upsertFactionRolesAdminPanel", () => upsertFactionRolesAdminPanel(client));
+	await runStartupTask("upsertStreamerPanel", () => upsertStreamerPanel(client));
 	await runStartupTask("refreshExistingHiveForumSummaries", () => refreshExistingHiveForumSummaries(client));
 	await runStartupTask("upsertFamilyImprovementPanels", () => upsertFamilyImprovementPanels(client));
 	await runStartupTask("upsertFamilyPromoPanel", () => upsertFamilyPromoPanel(client));
