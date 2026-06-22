@@ -6,7 +6,7 @@ async function main() {
     console.log("🌱 Seeding organisations...");
     const families = [
         {
-            name: "Ravens",
+            name: "Londo",
             subject: "Частная охранная деятельность",
             adress: "Los Santos, Vinewood",
             color: "#FF0000",

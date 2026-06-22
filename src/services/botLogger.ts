@@ -78,7 +78,7 @@ function buildEmbed(payload: BotLogPayload) {
 		.setColor(COLORS[payload.level])
 		.setTitle(`${ICONS[payload.level]} ${payload.title}`)
 		.setTimestamp()
-		.setFooter({ text: "Ravens Bot logs" });
+		.setFooter({ text: "Londo Bot logs" });
 
 	if (payload.description) {
 		embed.setDescription(trimText(payload.description));

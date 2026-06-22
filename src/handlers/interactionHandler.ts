@@ -78,6 +78,7 @@ import { diceCommand } from "../commands/ravens-family/dice";
 import { handleDiceUI } from "./handleDiceUI";
 import { logBotEvent } from "../services/botLogger";
 import { handleStreamerPanelUI } from "./handleStreamerPanelUI";
+import { handleDailyWheelUI } from "./handleDailyWheelUI";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -139,6 +140,7 @@ export async function handleInteractions(interaction: Interaction) {
 
 		if (interaction.isButton()) {
 			// Эти обработчики у тебя уже умеют возвращать boolean
+			if (await handleDailyWheelUI(interaction)) return;
 			if (await handleStreamerPanelUI(interaction)) return;
 			if (await handleCreateCaseButton(interaction)) return;
 			if (await handleDeleteHiveFromForumButton(interaction)) return;
@@ -169,6 +171,7 @@ export async function handleInteractions(interaction: Interaction) {
 		}
 
 		if (interaction.isModalSubmit()) {
+			if (await handleDailyWheelUI(interaction)) return;
 			if (await handleStreamerPanelUI(interaction)) return;
 			if (await handleFamilyAfkUI(interaction)) return;
 			if (await handleFamilyVacationUI(interaction)) return;

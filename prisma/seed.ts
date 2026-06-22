@@ -7,7 +7,7 @@ async function main() {
 
 	const families = [
 		{
-			name: "Ravens",
+			name: "Londo",
 			subject: "Частная охранная деятельность",
 			adress: "Los Santos, Vinewood",
 			color: "#FF0000",

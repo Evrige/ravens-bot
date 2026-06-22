@@ -91,6 +91,7 @@ import {
 	logBotEvent,
 } from "./services/botLogger";
 import { upsertStreamerPanel } from "./services/upsertStreamerPanel";
+import { upsertDailyWheelPanels } from "./services/upsertDailyWheelPanels";
 dotenv.config();
 installBotConsoleBridge();
 
@@ -302,6 +303,7 @@ client.once("ready", async () => {
 	await runStartupTask("upsertFactionRolesPanel", () => upsertFactionRolesPanel(client));
 	await runStartupTask("upsertFactionRolesAdminPanel", () => upsertFactionRolesAdminPanel(client));
 	await runStartupTask("upsertStreamerPanel", () => upsertStreamerPanel(client));
+	await runStartupTask("upsertDailyWheelPanels", () => upsertDailyWheelPanels(client));
 	await runStartupTask("refreshExistingHiveForumSummaries", () => refreshExistingHiveForumSummaries(client));
 	await runStartupTask("upsertFamilyImprovementPanels", () => upsertFamilyImprovementPanels(client));
 	await runStartupTask("upsertFamilyPromoPanel", () => upsertFamilyPromoPanel(client));
