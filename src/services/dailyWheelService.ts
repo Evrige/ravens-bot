@@ -13,7 +13,7 @@ import { CUSTOM_IDS } from "../constants/customIds";
 import { prisma } from "../utils/prisma";
 import { getWheelRewards, WheelVisualReward } from "../utils/renderDailyWheel";
 
-const COOLDOWN_MS = 1_000;
+const COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 
 export class DailyWheelCooldownError extends Error {
 	constructor(public readonly nextSpinAt: Date) {
@@ -21,12 +21,22 @@ export class DailyWheelCooldownError extends Error {
 	}
 }
 
+export class DailyWheelInsufficientBalanceError extends Error {
+	constructor(public readonly price: number) {
+		super("Insufficient balance for paid wheel spin");
+	}
+}
+
+export type DailyWheelSpinMode = "FREE" | "PAID";
+
 export type DailyWheelSpinResult = {
 	spinId: bigint;
 	reward: WheelVisualReward;
 	visualRewards: WheelVisualReward[];
-	nextSpinAt: Date;
+	nextSpinAt: Date | null;
 	autoIssued: boolean;
+	spinMode: DailyWheelSpinMode;
+	spinPrice: number | null;
 };
 
 function pickReward(rewards: WheelVisualReward[]) {
@@ -54,7 +64,18 @@ export async function getDailyWheelCooldown(userId: string) {
 	return cooldown?.nextSpinAt ?? null;
 }
 
-export async function spinDailyWheel(userId: string): Promise<DailyWheelSpinResult> {
+export async function getDailyWheelSettings() {
+	return await prisma.dailyWheelSettings.upsert({
+		where: { id: 1 },
+		update: {},
+		create: { id: 1, paidSpinPrice: 100 },
+	});
+}
+
+export async function spinDailyWheel(
+	userId: string,
+	spinMode: DailyWheelSpinMode = "FREE"
+): Promise<DailyWheelSpinResult> {
 	const storedRewards = await getDailyWheelRewards();
 	if (!storedRewards.length) {
 		throw new Error("DAILY_WHEEL_NO_REWARDS");
@@ -69,34 +90,41 @@ export async function spinDailyWheel(userId: string): Promise<DailyWheelSpinResu
 	const selected = pickReward(visualRewards);
 	const now = new Date();
 	const nextSpinAt = new Date(now.getTime() + COOLDOWN_MS);
+	const settings = spinMode === "PAID" ? await getDailyWheelSettings() : null;
+	const spinPrice = settings?.paidSpinPrice ?? null;
 	const autoIssued = selected.rewardType === "COINS" || selected.rewardType === "NONE";
 
-	// В тестовом режиме сбрасываем только старые кулдауны от 24-часовой настройки.
-	if (COOLDOWN_MS === 1_000) {
-		await prisma.dailyWheelCooldown.updateMany({
-			where: {
-				userId,
-				nextSpinAt: { gt: new Date(now.getTime() + 10_000) },
-			},
-			data: { nextSpinAt: now },
-		});
-	}
-
 	const spin = await prisma.$transaction(async (tx) => {
-		const claimed = await tx.$queryRaw<Array<{ nextSpinAt: Date }>>(Prisma.sql`
-			INSERT INTO "DailyWheelCooldown" ("userId", "nextSpinAt", "updatedAt")
-			VALUES (${userId}, ${nextSpinAt}, NOW())
-			ON CONFLICT ("userId") DO UPDATE
-			SET "nextSpinAt" = EXCLUDED."nextSpinAt", "updatedAt" = NOW()
-			WHERE "DailyWheelCooldown"."nextSpinAt" <= ${now}
-			RETURNING "nextSpinAt"
-		`);
+		if (spinMode === "FREE") {
+			const claimed = await tx.$queryRaw<Array<{ nextSpinAt: Date }>>(Prisma.sql`
+				INSERT INTO "DailyWheelCooldown" ("userId", "nextSpinAt", "updatedAt")
+				VALUES (${userId}, ${nextSpinAt}, NOW())
+				ON CONFLICT ("userId") DO UPDATE
+				SET "nextSpinAt" = EXCLUDED."nextSpinAt", "updatedAt" = NOW()
+				WHERE "DailyWheelCooldown"."nextSpinAt" <= ${now}
+				RETURNING "nextSpinAt"
+			`);
 
-		if (!claimed.length) {
-			const current = await tx.dailyWheelCooldown.findUnique({
-				where: { userId },
+			if (!claimed.length) {
+				const current = await tx.dailyWheelCooldown.findUnique({
+					where: { userId },
+				});
+				throw new DailyWheelCooldownError(current?.nextSpinAt ?? nextSpinAt);
+			}
+		} else {
+			const charged = await tx.user.updateMany({
+				where: {
+					id: userId,
+					balance: { gte: spinPrice! },
+				},
+				data: {
+					balance: { decrement: spinPrice! },
+				},
 			});
-			throw new DailyWheelCooldownError(current?.nextSpinAt ?? nextSpinAt);
+
+			if (!charged.count) {
+				throw new DailyWheelInsufficientBalanceError(spinPrice!);
+			}
 		}
 
 		if (selected.rewardType === "COINS" && selected.amount && selected.amount > 0) {
@@ -110,6 +138,8 @@ export async function spinDailyWheel(userId: string): Promise<DailyWheelSpinResu
 		return await tx.dailyWheelSpin.create({
 			data: {
 				userId,
+				spinMode,
+				spinPrice,
 				rewardId: selected.id,
 				rewardName: selected.name,
 				rewardType: selected.rewardType,
@@ -124,8 +154,10 @@ export async function spinDailyWheel(userId: string): Promise<DailyWheelSpinResu
 		spinId: spin.id,
 		reward: selected,
 		visualRewards,
-		nextSpinAt,
+		nextSpinAt: spinMode === "FREE" ? nextSpinAt : null,
 		autoIssued,
+		spinMode,
+		spinPrice,
 	};
 }
 
@@ -147,6 +179,14 @@ export async function sendDailyWheelLog(client: Client, result: DailyWheelSpinRe
 		.setTitle(isManual ? "🎁 Ручная награда колеса" : "🎡 Результат ежедневного колеса")
 		.addFields(
 			{ name: "Пользователь", value: `<@${userId}>`, inline: true },
+			{
+				name: "Вращение",
+				value:
+					result.spinMode === "PAID"
+						? `Платное — ${result.spinPrice?.toLocaleString("ru-RU") ?? 0} 🪙`
+						: "Бесплатное",
+				inline: true,
+			},
 			{ name: "Награда", value: result.reward.name, inline: true },
 			{
 				name: "Тип",

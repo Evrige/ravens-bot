@@ -15,7 +15,7 @@ export const balanceCommand = {
 	async execute(interaction: ChatInputCommandInteraction) {
 		try {
 			// Отложенный ответ
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 			const user = await prisma.user.findUnique({
 				where: { id: interaction.user.id }
@@ -111,7 +111,12 @@ export const takeCommand = {
 		const amount = interaction.options.getNumber("amount", true);
 
 		const user = await prisma.user.findUnique({ where: { id: target.id } });
-		if (!user) return interaction.reply({ content: "Пользователь не найден в базе.", ephemeral: true });
+		if (!user) {
+			return interaction.reply({
+				content: "Пользователь не найден в базе.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
 		const currentBalance = (user.balance as any).toNumber();
 		const actualTaken = Math.min(amount, currentBalance); // Сколько реально можно забрать

@@ -14,17 +14,22 @@ import { FAMILY_HIGH_ROLE_IDS, FAMILY_OWNERS_ROLE_IDS } from "../config/staff";
 import { CUSTOM_IDS } from "../constants/customIds";
 import {
 	DailyWheelCooldownError,
+	DailyWheelInsufficientBalanceError,
+	DailyWheelSpinMode,
 	fulfillDailyWheelSpin,
 	sendDailyWheelLog,
 	spinDailyWheel,
 } from "../services/dailyWheelService";
-import { upsertDailyWheelAdminPanel } from "../services/upsertDailyWheelPanels";
+import {
+	upsertDailyWheelAdminPanel,
+	upsertDailyWheelPanels,
+} from "../services/upsertDailyWheelPanels";
 import { prisma } from "../utils/prisma";
 import {
 	DAILY_WHEEL_GIF_SPIN_MS,
 	getRewardCenterAngle,
-	renderDailyWheelGif,
 } from "../utils/renderDailyWheel";
+import { enqueueDailyWheelGif } from "../services/dailyWheelGifQueue";
 
 type WheelInteraction = ButtonInteraction | ModalSubmitInteraction;
 
@@ -128,6 +133,23 @@ async function showRewardImageModal(interaction: ButtonInteraction) {
 					CUSTOM_IDS.DAILY_WHEEL_REWARD_IMAGE,
 					"Ссылка или remove для удаления",
 					"https://example.com/prize.png"
+				)
+			)
+		);
+
+	await interaction.showModal(modal);
+}
+
+async function showPaidPriceModal(interaction: ButtonInteraction) {
+	const modal = new ModalBuilder()
+		.setCustomId(CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE)
+		.setTitle("Цена платного вращения")
+		.addComponents(
+			new ActionRowBuilder<TextInputBuilder>().addComponents(
+				shortInput(
+					CUSTOM_IDS.DAILY_WHEEL_PAID_PRICE,
+					"Цена в монетах",
+					"Например: 500"
 				)
 			)
 		);
@@ -371,6 +393,31 @@ async function handleRewardImage(interaction: ModalSubmitInteraction) {
 	);
 }
 
+async function handlePaidPrice(interaction: ModalSubmitInteraction) {
+	const price = Number(
+		interaction.fields.getTextInputValue(CUSTOM_IDS.DAILY_WHEEL_PAID_PRICE).trim()
+	);
+
+	if (!Number.isSafeInteger(price) || price <= 0 || price > 1_000_000_000) {
+		await interaction.reply({
+			content: "❌ Цена должна быть целым числом от 1 до 1 000 000 000.",
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+	await prisma.dailyWheelSettings.upsert({
+		where: { id: 1 },
+		update: { paidSpinPrice: price },
+		create: { id: 1, paidSpinPrice: price },
+	});
+	await upsertDailyWheelPanels(interaction.client);
+	await interaction.editReply(
+		`✅ Цена платного вращения установлена: **${price.toLocaleString("ru-RU")} монет**.`
+	);
+}
+
 async function handleEditReward(interaction: ModalSubmitInteraction) {
 	const id = Number(
 		interaction.fields.getTextInputValue(CUSTOM_IDS.DAILY_WHEEL_REWARD_ID).trim()
@@ -456,17 +503,26 @@ async function handleEditReward(interaction: ModalSubmitInteraction) {
 	await interaction.editReply(`✅ Награда ID **${id}** обновлена.`);
 }
 
-async function animateSpin(interaction: ButtonInteraction) {
+async function animateSpin(
+	interaction: ButtonInteraction,
+	spinMode: DailyWheelSpinMode
+) {
 	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 	let result;
 	try {
-		result = await spinDailyWheel(interaction.user.id);
+		result = await spinDailyWheel(interaction.user.id, spinMode);
 	} catch (error) {
 		if (error instanceof DailyWheelCooldownError) {
 			const timestamp = Math.floor(error.nextSpinAt.getTime() / 1000);
 			await interaction.editReply(
 				`⏳ Колесо ещё восстанавливается. Следующее вращение доступно <t:${timestamp}:R> — <t:${timestamp}:f>.`
+			);
+			return;
+		}
+		if (error instanceof DailyWheelInsufficientBalanceError) {
+			await interaction.editReply(
+				`❌ Недостаточно монет. Платное вращение стоит **${error.price.toLocaleString("ru-RU")} монет**.`
 			);
 			return;
 		}
@@ -490,11 +546,11 @@ async function animateSpin(interaction: ButtonInteraction) {
 		Math.PI * 2 * 7 + (-Math.PI / 2 - rewardCenter);
 	await interaction.editReply("🎡 Подготавливаем колесо...");
 
-	const animation = await renderDailyWheelGif(
-		result.visualRewards,
+	const animation = await enqueueDailyWheelGif({
+		rewards: result.visualRewards,
 		targetRotation,
-		result.reward
-	);
+		result: result.reward,
+	});
 	const attachment = new AttachmentBuilder(animation, {
 		name: `daily-wheel-${result.spinId.toString()}.gif`,
 	});
@@ -519,6 +575,28 @@ async function animateSpin(interaction: ButtonInteraction) {
 		result,
 		interaction.user.id
 	);
+
+	const dmEmbed = new EmbedBuilder()
+		.setColor(
+			result.reward.rewardType === "NONE"
+				? 0x6b7280
+				: result.reward.rewardType === "MANUAL"
+					? 0xf59e0b
+					: 0x57f287
+		)
+		.setTitle("🎡 Результат колеса Londo")
+		.setDescription(content)
+		.addFields({
+			name: "Тип вращения",
+			value:
+				result.spinMode === "PAID"
+					? `Платное — ${result.spinPrice?.toLocaleString("ru-RU") ?? 0} монет`
+					: "Бесплатное",
+			inline: true,
+		})
+		.setTimestamp();
+
+	await interaction.user.send({ embeds: [dmEmbed] }).catch(() => {});
 }
 
 async function handleFulfill(interaction: ButtonInteraction) {
@@ -574,20 +652,28 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 	const customId = interaction.customId;
 	const isKnown =
 		customId === CUSTOM_IDS.DAILY_WHEEL_SPIN ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_PAID_SPIN ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_IMAGE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_DELETE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_IMAGE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_DELETE ||
 		customId.startsWith(CUSTOM_IDS.DAILY_WHEEL_FULFILL);
 
 	if (!isKnown) return false;
 
 	if (interaction.isButton() && customId === CUSTOM_IDS.DAILY_WHEEL_SPIN) {
-		await animateSpin(interaction);
+		await animateSpin(interaction, "FREE");
+		return true;
+	}
+
+	if (interaction.isButton() && customId === CUSTOM_IDS.DAILY_WHEEL_PAID_SPIN) {
+		await animateSpin(interaction, "PAID");
 		return true;
 	}
 
@@ -595,10 +681,12 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_IMAGE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_DELETE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_IMAGE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_DELETE
 	) {
 		if (!canManage(interaction)) {
@@ -620,6 +708,9 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 		if (customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_IMAGE) {
 			await showRewardImageModal(interaction);
 		}
+		if (customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE) {
+			await showPaidPriceModal(interaction);
+		}
 		if (customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_DELETE) {
 			await showDeleteRewardModal(interaction);
 		}
@@ -637,6 +728,9 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 	}
 	if (customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_IMAGE) {
 		await handleRewardImage(interaction);
+	}
+	if (customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE) {
+		await handlePaidPrice(interaction);
 	}
 	if (customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_DELETE) {
 		await handleDeleteReward(interaction);

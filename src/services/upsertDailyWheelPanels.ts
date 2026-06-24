@@ -2,6 +2,7 @@ import { ButtonStyle, Client, MessageFlags, TextChannel } from "discord.js";
 import { config } from "../config/env";
 import { CUSTOM_IDS } from "../constants/customIds";
 import { prisma } from "../utils/prisma";
+import { getDailyWheelSettings } from "./dailyWheelService";
 
 const USER_PANEL_TYPE = "daily_wheel_user_panel";
 const ADMIN_PANEL_TYPE = "daily_wheel_admin_panel";
@@ -13,7 +14,8 @@ const V2 = {
 	Separator: 14,
 } as const;
 
-function buildUserPanel() {
+async function buildUserPanel() {
+	const settings = await getDailyWheelSettings();
 	return {
 		type: V2.Container,
 		accent_color: 0xa855f7,
@@ -24,7 +26,8 @@ function buildUserPanel() {
 					"## 🎡 Ежедневное колесо Londo",
 					"Испытай удачу и получи случайную награду.",
 					"",
-					"Тестовый режим: колесо доступно **раз в 1 секунду**.",
+					"Колесо доступно **раз в 24 часа** с момента предыдущего вращения.",
+					`Дополнительное вращение доступно за **${settings.paidSpinPrice.toLocaleString("ru-RU")} монет** без ожидания.`,
 					"Монеты начисляются автоматически. Остальные призы выдаются администрацией.",
 				].join("\n"),
 			},
@@ -35,9 +38,16 @@ function buildUserPanel() {
 					{
 						type: V2.Button,
 						style: ButtonStyle.Primary,
-						label: "Крутить колесо",
+						label: "Бесплатное вращение",
 						emoji: { name: "🎡" },
 						custom_id: CUSTOM_IDS.DAILY_WHEEL_SPIN,
+					},
+					{
+						type: V2.Button,
+						style: ButtonStyle.Success,
+						label: `За ${settings.paidSpinPrice.toLocaleString("ru-RU")} монет`,
+						emoji: { name: "🪙" },
+						custom_id: CUSTOM_IDS.DAILY_WHEEL_PAID_SPIN,
 					},
 				],
 			},
@@ -46,6 +56,7 @@ function buildUserPanel() {
 }
 
 async function buildAdminPanel() {
+	const settings = await getDailyWheelSettings();
 	const rewards = await prisma.dailyWheelReward.findMany({
 		orderBy: { id: "asc" },
 	});
@@ -71,6 +82,7 @@ async function buildAdminPanel() {
 					"Добавляй награды, указывай шанс и способ выдачи.",
 					"",
 					`**Сумма шансов:** ${totalChance.toFixed(2).replace(/\.?0+$/, "")}%`,
+					`**Цена платного вращения:** ${settings.paidSpinPrice.toLocaleString("ru-RU")} монет`,
 					totalChance < 100
 						? `**Без выигрыша:** ${(100 - totalChance).toFixed(2).replace(/\.?0+$/, "")}%`
 						: totalChance === 100
@@ -106,6 +118,12 @@ async function buildAdminPanel() {
 						style: ButtonStyle.Secondary,
 						label: "Картинка",
 						custom_id: CUSTOM_IDS.DAILY_WHEEL_ADMIN_IMAGE,
+					},
+					{
+						type: V2.Button,
+						style: ButtonStyle.Secondary,
+						label: "Цена вращения",
+						custom_id: CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE,
 					},
 					{
 						type: V2.Button,
@@ -166,7 +184,7 @@ export async function upsertDailyWheelUserPanel(client: Client) {
 		client,
 		config.DAILY_WHEEL_CHANNEL_ID,
 		USER_PANEL_TYPE,
-		buildUserPanel()
+		await buildUserPanel()
 	);
 }
 

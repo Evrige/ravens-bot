@@ -154,6 +154,8 @@ model DailyWheelReward {
 model DailyWheelSpin {
   id           BigInt   @id @default(autoincrement())
   userId       String
+  spinMode     String   @default("FREE")
+  spinPrice    Int?
   rewardId     Int?
   rewardName   String
   rewardType   String
@@ -171,6 +173,11 @@ model DailyWheelCooldown {
   userId     String   @id
   nextSpinAt DateTime
   updatedAt  DateTime @updatedAt
+}
+
+model DailyWheelSettings {
+  id            Int @id @default(1)
+  paidSpinPrice Int @default(100)
 }
 
 model WeeklyFeeSettings {
