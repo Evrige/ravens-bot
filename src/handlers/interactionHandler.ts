@@ -79,6 +79,7 @@ import { handleDiceUI } from "./handleDiceUI";
 import { logBotEvent } from "../services/botLogger";
 import { handleStreamerPanelUI } from "./handleStreamerPanelUI";
 import { handleDailyWheelUI } from "./handleDailyWheelUI";
+import { dailyWheelResetCommand } from "../commands/ravens-family/daily-wheel-reset";
 
 // ================== Словарь команд ==================
 const commandsMap: Record<string, any> = {
@@ -115,6 +116,7 @@ const commandsMap: Record<string, any> = {
 	[CUSTOM_COMMAND.DICE]: diceCommand,
 	[CUSTOM_COMMAND.GAMES]: gamesCommand,
 	[CUSTOM_COMMAND.RANK]: rankCommand,
+	[CUSTOM_COMMAND.DAILY_WHEEL_RESET]: dailyWheelResetCommand,
 	[CUSTOM_COMMAND.DB_HIVE_PAYOUT]: hivePayoutCommand,
 	[CUSTOM_COMMAND.DB_INTERNSHIP]: internshipCommand,
 	[CUSTOM_COMMAND.DB_ORGANISATIONS_LIST]: organisationsListCommand,

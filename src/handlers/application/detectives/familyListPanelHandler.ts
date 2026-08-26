@@ -8,14 +8,16 @@ import {
 } from "discord.js";
 import {prisma} from "../../../utils/prisma";
 import {FAMILY_PANEL, upsertFamilyListPanel} from "../../../services/upsertFamilyListPanel";
+import {FACTION_PANEL, upsertFactionListPanel} from "../../../services/upsertFactionListPanel";
 import {resetHivePanel} from "../../../services/upsertHivePanel";
 
 function parse(customId: string) {
-	// family:list:<action>:<id>
+	// family:list:<action>:<id> / faction:list:<action>:<id>
 	const parts = customId.split(":");
 	if (parts.length !== 4) return null;
-	if (parts[0] !== "family" || parts[1] !== "list") return null;
+	if ((parts[0] !== "family" && parts[0] !== "faction") || parts[1] !== "list") return null;
 
+	const scope = parts[0] as "family" | "faction";
 	const action = parts[2];
 	const idStr = parts[3];
 
@@ -26,18 +28,29 @@ function parse(customId: string) {
 		return null;
 	}
 
-	return { action, id };
+	return { scope, action, id };
+}
+
+function getPanel(scope: "family" | "faction") {
+	return scope === "family" ? FAMILY_PANEL : FACTION_PANEL;
+}
+
+async function upsertListPanel(client: any, scope: "family" | "faction") {
+	return scope === "family"
+		? upsertFamilyListPanel(client)
+		: upsertFactionListPanel(client);
 }
 
 /* ===================== BUTTONS ===================== */
 
 export async function handleFamilyListPanelButtons(interaction: ButtonInteraction) {
-	if (!interaction.customId.startsWith("family:list:")) return false;
+	if (!interaction.customId.startsWith("family:list:") && !interaction.customId.startsWith("faction:list:")) return false;
 
 	const parsed = parse(interaction.customId);
 	if (!parsed) return false;
 
-	const { action, id: orgId } = parsed;
+	const { scope, action, id: orgId } = parsed;
+	const panel = getPanel(scope);
 
 	// disabled name-кнопка — игнор
 	if (action === "nop") return true;
@@ -55,8 +68,8 @@ export async function handleFamilyListPanelButtons(interaction: ButtonInteractio
 		}
 
 		const modal = new ModalBuilder()
-			.setCustomId(FAMILY_PANEL.customId.editModal(orgId))
-			.setTitle("Редактировать семью");
+			.setCustomId(panel.customId.editModal(orgId))
+			.setTitle(scope === "family" ? "Редактировать семью" : "Редактировать фракцию");
 
 		const nameInput = new TextInputBuilder()
 			.setCustomId("name")
@@ -116,8 +129,7 @@ export async function handleFamilyListPanelButtons(interaction: ButtonInteractio
 			select: { isFreeze: true, name: true },
 		});
 
-		// 1) обновили список семей
-		await upsertFamilyListPanel(interaction.client);
+		await upsertListPanel(interaction.client, scope);
 
 		// 2) обновили панель улик (селекты)
 		await resetHivePanel(interaction.client).catch(() => {});
@@ -149,7 +161,7 @@ export async function handleFamilyListPanelButtons(interaction: ButtonInteractio
 			return true;
 		}
 
-		await upsertFamilyListPanel(interaction.client);
+		await upsertListPanel(interaction.client, scope);
 		await resetHivePanel(interaction.client).catch(() => {});
 		await interaction.editReply(`🗑️ Организация **${org.name}** удалена.`);
 		return true;
@@ -162,9 +174,11 @@ export async function handleFamilyListPanelButtons(interaction: ButtonInteractio
 /* ===================== MODAL SUBMIT ===================== */
 
 export async function handleFamilyEditModal(interaction: ModalSubmitInteraction) {
-	if (!interaction.customId.startsWith("family:list:modal_edit:")) return false;
+	const isFamilyModal = interaction.customId.startsWith("family:list:modal_edit:");
+	const isFactionModal = interaction.customId.startsWith("faction:list:modal_edit:");
+	if (!isFamilyModal && !isFactionModal) return false;
+	const scope = isFamilyModal ? "family" : "faction";
 
-	const parsed = parse(interaction.customId.replace("modal_edit", "modal_edit")); // просто чтобы использовать parse ниже
 	// parse ожидает family:list:<action>:<id> — поэтому разберём вручную
 	const parts = interaction.customId.split(":");
 	// family:list:modal_edit:<id>
@@ -220,7 +234,7 @@ export async function handleFamilyEditModal(interaction: ModalSubmitInteraction)
 		select: { name: true },
 	});
 
-	await upsertFamilyListPanel(interaction.client);
+	await upsertListPanel(interaction.client, scope);
 	await resetHivePanel(interaction.client).catch(() => {});
 	await interaction.editReply(`✅ Сохранено: **${updated.name}**`);
 	return true;

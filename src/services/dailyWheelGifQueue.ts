@@ -53,6 +53,9 @@ function runInWorker(task: GifTask) {
 			targetRotation: task.targetRotation,
 			result: task.result,
 		});
+	}).catch((error) => {
+		console.error("[daily-wheel] GIF worker failed, using main thread:", error);
+		return renderDailyWheelGif(task.rewards, task.targetRotation, task.result);
 	});
 }
 

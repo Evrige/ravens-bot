@@ -2,10 +2,14 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
+	ChannelType,
 	Client,
 	Colors,
 	EmbedBuilder,
+	ForumChannel,
 	TextChannel,
+	ThreadAutoArchiveDuration,
+	ThreadChannel,
 } from "discord.js";
 import { Prisma } from "../generated/prisma/client";
 import { config } from "../config/env";
@@ -14,6 +18,8 @@ import { prisma } from "../utils/prisma";
 import { getWheelRewards, WheelVisualReward } from "../utils/renderDailyWheel";
 
 const COOLDOWN_MS = 24 * 60 * 60 * 1_000;
+const WHEEL_FORUM_THREAD_TYPE = "daily_wheel_forum_logs_thread";
+const WHEEL_FORUM_THREAD_NAME = "Колесо удачи";
 
 export class DailyWheelCooldownError extends Error {
 	constructor(public readonly nextSpinAt: Date) {
@@ -62,6 +68,12 @@ export async function getDailyWheelCooldown(userId: string) {
 		where: { userId },
 	});
 	return cooldown?.nextSpinAt ?? null;
+}
+
+export async function resetDailyWheelCooldown(userId: string) {
+	return await prisma.dailyWheelCooldown.deleteMany({
+		where: { userId },
+	});
 }
 
 export async function getDailyWheelSettings() {
@@ -161,14 +173,9 @@ export async function spinDailyWheel(
 	};
 }
 
-export async function sendDailyWheelLog(client: Client, result: DailyWheelSpinResult, userId: string) {
-	if (!config.DAILY_WHEEL_LOG_CHANNEL_ID) return;
-
-	const channel = await client.channels.fetch(config.DAILY_WHEEL_LOG_CHANNEL_ID).catch(() => null);
-	if (!channel || !channel.isTextBased() || !("send" in channel)) return;
-
+function buildDailyWheelLogEmbed(result: DailyWheelSpinResult, userId: string) {
 	const isManual = result.reward.rewardType === "MANUAL";
-	const embed = new EmbedBuilder()
+	return new EmbedBuilder()
 		.setColor(
 			result.reward.rewardType === "NONE"
 				? Colors.Grey
@@ -206,23 +213,111 @@ export async function sendDailyWheelLog(client: Client, result: DailyWheelSpinRe
 			}
 		)
 		.setTimestamp();
+}
 
-	const components = isManual
-		? [
-			new ActionRowBuilder<ButtonBuilder>().addComponents(
-				new ButtonBuilder()
-					.setCustomId(`${CUSTOM_IDS.DAILY_WHEEL_FULFILL}${result.spinId.toString()}`)
-					.setLabel("Отметить как выдано")
-					.setStyle(ButtonStyle.Success)
-			),
-		]
-		: [];
+function pickAppliedTagsIfRequired(forum: ForumChannel) {
+	const tags = (forum as any).availableTags as Array<{ id: string; name: string }> | undefined;
+	if (!tags?.length) return undefined;
+	return [tags[0].id];
+}
+
+async function ensureDailyWheelForumThread(client: Client) {
+	if (!config.DAILY_WHEEL_FORUM_CHANNEL_ID) return null;
+
+	const channel = await client.channels.fetch(config.DAILY_WHEEL_FORUM_CHANNEL_ID).catch(() => null);
+	if (!channel || channel.type !== ChannelType.GuildForum) return null;
+
+	const forum = channel as ForumChannel;
+	const stored = await prisma.botMessage.findUnique({ where: { type: WHEEL_FORUM_THREAD_TYPE } });
+	if (stored?.messageId) {
+		const existing = await client.channels.fetch(stored.messageId).catch(() => null);
+		if (existing?.isThread()) {
+			const thread = existing as ThreadChannel;
+			if (thread.archived) await thread.setArchived(false).catch(() => null);
+			if (thread.locked) await thread.setLocked(false).catch(() => null);
+			return thread;
+		}
+	}
+
+	const active = await forum.threads.fetchActive().catch(() => null);
+	const activeFound = active?.threads.find((thread) => thread.name === WHEEL_FORUM_THREAD_NAME);
+	if (activeFound) {
+		await prisma.botMessage.upsert({
+			where: { type: WHEEL_FORUM_THREAD_TYPE },
+			update: { channelId: forum.id, messageId: activeFound.id },
+			create: { type: WHEEL_FORUM_THREAD_TYPE, channelId: forum.id, messageId: activeFound.id },
+		});
+		return activeFound as ThreadChannel;
+	}
+
+	const archived = await forum.threads.fetchArchived({ type: "public", fetchAll: true }).catch(() => null);
+	const archivedFound = archived?.threads.find((thread) => thread.name === WHEEL_FORUM_THREAD_NAME);
+	if (archivedFound) {
+		await archivedFound.setArchived(false).catch(() => null);
+		await archivedFound.setLocked(false).catch(() => null);
+		await prisma.botMessage.upsert({
+			where: { type: WHEEL_FORUM_THREAD_TYPE },
+			update: { channelId: forum.id, messageId: archivedFound.id },
+			create: { type: WHEEL_FORUM_THREAD_TYPE, channelId: forum.id, messageId: archivedFound.id },
+		});
+		return archivedFound as ThreadChannel;
+	}
+
+	const appliedTags = pickAppliedTagsIfRequired(forum);
+	const created = await forum.threads.create({
+		name: WHEEL_FORUM_THREAD_NAME,
+		autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
+		message: { content: "Логи всех вращений ежедневного колеса Londo." },
+		...(appliedTags ? { appliedTags } : {}),
+	});
+
+	await prisma.botMessage.upsert({
+		where: { type: WHEEL_FORUM_THREAD_TYPE },
+		update: { channelId: forum.id, messageId: created.id },
+		create: { type: WHEEL_FORUM_THREAD_TYPE, channelId: forum.id, messageId: created.id },
+	});
+
+	return created;
+}
+
+async function sendDailyWheelForumLog(client: Client, result: DailyWheelSpinResult, userId: string) {
+	const thread = await ensureDailyWheelForumThread(client);
+	if (!thread) return;
+
+	await thread.send({
+		embeds: [buildDailyWheelLogEmbed(result, userId)],
+		allowedMentions: { users: [userId] },
+	}).catch(() => {});
+}
+
+async function sendDailyWheelManualLog(client: Client, result: DailyWheelSpinResult, userId: string) {
+	if (result.reward.rewardType !== "MANUAL") return;
+	if (!config.DAILY_WHEEL_LOG_CHANNEL_ID) return;
+
+	const channel = await client.channels.fetch(config.DAILY_WHEEL_LOG_CHANNEL_ID).catch(() => null);
+	if (!channel || !channel.isTextBased() || !("send" in channel)) return;
+
+	const embed = buildDailyWheelLogEmbed(result, userId);
+
+	const components = [
+		new ActionRowBuilder<ButtonBuilder>().addComponents(
+			new ButtonBuilder()
+				.setCustomId(`${CUSTOM_IDS.DAILY_WHEEL_FULFILL}${result.spinId.toString()}`)
+				.setLabel("Отметить как выдано")
+				.setStyle(ButtonStyle.Success)
+		),
+	];
 
 	await (channel as TextChannel).send({
 		embeds: [embed],
 		components,
 		allowedMentions: { users: [userId] },
 	}).catch(() => {});
+}
+
+export async function sendDailyWheelLog(client: Client, result: DailyWheelSpinResult, userId: string) {
+	await sendDailyWheelForumLog(client, result, userId);
+	await sendDailyWheelManualLog(client, result, userId);
 }
 
 export async function fulfillDailyWheelSpin(spinId: bigint, moderatorId: string) {

@@ -229,21 +229,59 @@ export async function handleFamilyButtons(interaction: any) {
 		}
 
 		const username = member.user.username;
-		const { textChannel } = await ensureFamilyTicketChannels({
-			guild: interaction.guild,
-			username,
-			userId,
-			clickedUserId: interaction.user.id,
-			roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1),
-		});
-
-		await prisma.application.update({
-			where: { id: applicationId },
+		const claimed = await prisma.application.updateMany({
+			where: {
+				id: applicationId,
+				callTakenById: null,
+			},
 			data: {
 				callTakenById: interaction.user.id,
 				callTakenAt: new Date(),
 			},
 		});
+
+		if (!claimed.count) {
+			const current = await prisma.application.findUnique({
+				where: { id: applicationId },
+				select: { callTakenById: true },
+			});
+
+			return interaction.reply({
+				content: current?.callTakenById
+					? `Эта заявка уже взята на обзвон пользователем <@${current.callTakenById}>.`
+					: "Эту заявку уже обрабатывают. Попробуйте обновить сообщение.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+
+		let textChannel: TextChannel | null = null;
+		try {
+			const channels = await ensureFamilyTicketChannels({
+				guild: interaction.guild,
+				username,
+				userId,
+				clickedUserId: interaction.user.id,
+				roleIds: FAMILY_RECRUIT_ROLE_IDS.slice(1),
+			});
+			textChannel = channels.textChannel;
+		} catch (error) {
+			await prisma.application.updateMany({
+				where: {
+					id: applicationId,
+					callTakenById: interaction.user.id,
+				},
+				data: {
+					callTakenById: null,
+					callTakenAt: null,
+				},
+			});
+
+			console.error("family call channel create error:", error);
+			return interaction.reply({
+				content: "Не удалось создать каналы для обзвона ❌ Попробуйте ещё раз.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 
 		const originalEmbed = interaction.message.embeds[0];
 		const newComponents = buildFamilyButtons(applicationId, false);

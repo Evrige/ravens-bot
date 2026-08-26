@@ -28,9 +28,43 @@ import { findFamilyRankRole, applyFamilyRankChange } from "../services/familyRan
 import { prisma } from "../utils/prisma";
 import { sendFamilyAuditCustomEmbed } from "../services/startFamilyAuditLogger";
 
-const PROMO_REGISTER_URL = "https://majestic-rp.ru/register?utm_campaign=londo";
-const PROMO_EXAMPLE_URL = "https://youtu.be/uf-6T81xxVI";
-const PROMO_CODE = "LONDO";
+const LONDEST_PAYMENT_AMOUNT = "350.000$";
+const LONDEST_PAYMENT_MARKER = "FAMILY_ACCOUNT_350000";
+const MEDIA_REQUEST_MARKER = "FAMILY_MEDIA_REQUEST";
+
+type RequestKind = "promo" | "media";
+
+const REQUEST_META: Record<RequestKind, {
+	marker: string;
+	threadPrefix: string;
+	displayName: string;
+	createReason: string;
+	activeMessage: string;
+	notFoundMessage: string;
+	accessMessage: string;
+	logBucket: "promo";
+}> = {
+	promo: {
+		marker: LONDEST_PAYMENT_MARKER,
+		threadPrefix: "londest",
+		displayName: "Londest Londo",
+		createReason: "Заявка Londest Londo",
+		activeMessage: "У вас уже есть активная заявка Londest Londo",
+		notFoundMessage: "Заявка Londest Londo не найдена.",
+		accessMessage: "Только владельцы семьи могут обрабатывать заявки Londest Londo.",
+		logBucket: "promo",
+	},
+	media: {
+		marker: MEDIA_REQUEST_MARKER,
+		threadPrefix: "media",
+		displayName: "медиа",
+		createReason: "Заявка на медиа",
+		activeMessage: "У вас уже есть активная заявка на медиа",
+		notFoundMessage: "Заявка на медиа не найдена.",
+		accessMessage: "Только владельцы семьи могут обрабатывать заявки на медиа.",
+		logBucket: "promo",
+	},
+};
 
 function hasOwnerAccess(interaction: { member?: unknown }) {
 	const roleCache = (interaction.member as any)?.roles?.cache;
@@ -39,16 +73,19 @@ function hasOwnerAccess(interaction: { member?: unknown }) {
 	return FAMILY_OWNER_ROLE_IDS.some((roleId) => roleCache.has(roleId));
 }
 
-function buildDecisionButtons(requestId: bigint, disabled = false) {
+function buildDecisionButtons(requestId: bigint, disabled = false, kind: RequestKind = "promo") {
+	const completeId = kind === "media" ? CUSTOM_IDS.FAMILY_MEDIA_COMPLETE : CUSTOM_IDS.FAMILY_PROMO_COMPLETE;
+	const declineId = kind === "media" ? CUSTOM_IDS.FAMILY_MEDIA_DECLINE : CUSTOM_IDS.FAMILY_PROMO_DECLINE;
+
 	return new ActionRowBuilder<ButtonBuilder>().addComponents(
 		new ButtonBuilder()
-			.setCustomId(`${CUSTOM_IDS.FAMILY_PROMO_COMPLETE}${requestId.toString()}`)
-			.setLabel("Выполнено")
+			.setCustomId(`${completeId}${requestId.toString()}`)
+			.setLabel(kind === "media" ? "Принять" : "Выполнено")
 			.setStyle(ButtonStyle.Success)
 			.setDisabled(disabled),
 		new ButtonBuilder()
-			.setCustomId(`${CUSTOM_IDS.FAMILY_PROMO_DECLINE}${requestId.toString()}`)
-			.setLabel("Не выполнено")
+			.setCustomId(`${declineId}${requestId.toString()}`)
+			.setLabel(kind === "media" ? "Отклонить" : "Не выполнено")
 			.setStyle(ButtonStyle.Danger)
 			.setDisabled(disabled)
 	);
@@ -63,15 +100,17 @@ function sanitizeThreadName(value: string) {
 		.slice(0, 75);
 }
 
-async function getPromoChannel(interaction: ButtonInteraction) {
-	const channel = await interaction.client.channels.fetch(CHANNEL_IDS.FAMILY_PROMO).catch(() => null);
+async function getRequestChannel(interaction: ButtonInteraction, kind: RequestKind = "promo") {
+	const channelId = kind === "media" ? CHANNEL_IDS.FAMILY_MEDIA : CHANNEL_IDS.FAMILY_PROMO;
+	const channel = await interaction.client.channels.fetch(channelId).catch(() => null);
 	if (!channel || channel.type !== ChannelType.GuildText) return null;
 	return channel;
 }
 
-function buildPromoDeclineModal(requestId: bigint) {
+function buildPromoDeclineModal(requestId: bigint, kind: RequestKind = "promo") {
+	const modalId = kind === "media" ? CUSTOM_IDS.FAMILY_MEDIA_DECLINE_MODAL : CUSTOM_IDS.FAMILY_PROMO_DECLINE_MODAL;
 	const modal = new ModalBuilder()
-		.setCustomId(`${CUSTOM_IDS.FAMILY_PROMO_DECLINE_MODAL}${requestId.toString()}`)
+		.setCustomId(`${modalId}${requestId.toString()}`)
 		.setTitle("Причина отклонения");
 
 	const input = new TextInputBuilder()
@@ -79,7 +118,7 @@ function buildPromoDeclineModal(requestId: bigint) {
 		.setLabel("Причина")
 		.setStyle(TextInputStyle.Paragraph)
 		.setRequired(true)
-		.setPlaceholder("Укажите причину отклонения промо-заявки.");
+		.setPlaceholder("Укажите причину отклонения заявки.");
 
 	modal.addComponents(
 		new ActionRowBuilder<TextInputBuilder>().addComponents(input)
@@ -117,27 +156,49 @@ async function cleanupPromoSystemMessages(
 	);
 }
 
-async function createPromoThread(interaction: ButtonInteraction) {
-	const channel = await getPromoChannel(interaction);
+function buildIntroContent(kind: RequestKind, userMention: string, ownerMentions: string) {
+	if (kind === "media") {
+		return [
+			`${userMention} ${ownerMentions} Привет! Расскажи немного о себе и своих медиа-площадках.`,
+			"**Что нужно указать:**",
+			"• кто ты и почему хочешь стать медиа Londo",
+			"• ссылки на YouTube / Twitch / TikTok",
+			"• количество подписчиков и средние просмотры",
+			"• какой контент снимаешь или планируешь снимать",
+			"• сколько времени готов уделять контенту",
+		].join("\n");
+	}
+
+	return [
+		`${userMention} ${ownerMentions} Привет! Пожалуйста, предоставь доказательство пополнения счёта семьи на **${LONDEST_PAYMENT_AMOUNT}**.`,
+		"**Что должно быть видно на доказательстве:**",
+		"• сумма пополнения",
+		"• статик или никнейм персонажа",
+	].join("\n");
+}
+
+async function createPromoThread(interaction: ButtonInteraction, kind: RequestKind = "promo") {
+	const meta = REQUEST_META[kind];
+	const channel = await getRequestChannel(interaction, kind);
 	if (!channel) {
 		await interaction.reply({
-			content: "❌ Промо-канал не найден.",
+			content: `❌ Канал заявок ${meta.displayName} не найден.`,
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
 	}
 
-	const existingRequest = await getActivePromoRequestByUser(interaction.user.id);
+	const existingRequest = await getActivePromoRequestByUser(interaction.user.id, meta.marker);
 	if (existingRequest) {
 		await interaction.reply({
-			content: `ℹ️ У вас уже есть активная заявка: <#${existingRequest.threadId}>`,
+			content: `ℹ️ ${meta.activeMessage}: <#${existingRequest.threadId}>`,
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
 	}
 
-	const londestRole = findFamilyRankRole(interaction.guild!, "maecenas");
-	if (londestRole && (interaction.member as any)?.roles?.cache?.has?.(londestRole.id)) {
+	const londestRole = kind === "promo" ? findFamilyRankRole(interaction.guild!, "maecenas") : null;
+	if (kind === "promo" && londestRole && (interaction.member as any)?.roles?.cache?.has?.(londestRole.id)) {
 		await interaction.reply({
 			content: "ℹ️ У вас уже есть ранг Londest Londo.",
 			flags: MessageFlags.Ephemeral,
@@ -151,32 +212,32 @@ async function createPromoThread(interaction: ButtonInteraction) {
 	const displayName = member?.displayName ?? interaction.user.username;
 
 	const thread = await channel.threads.create({
-		name: `promo-${sanitizeThreadName(displayName) || interaction.user.id}`,
+		name: `${meta.threadPrefix}-${sanitizeThreadName(displayName) || interaction.user.id}`,
 		type: ChannelType.PrivateThread,
 		autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
 		invitable: false,
-		reason: `Промо-заявка ${interaction.user.id}`,
+		reason: `${meta.createReason} ${interaction.user.id}`,
 	}).catch(() => null);
 
 	if (!thread) {
-		await interaction.editReply("❌ Не удалось создать приватную ветку для промо.");
+		await interaction.editReply("❌ Не удалось создать приватную ветку для заявки.");
 		return true;
 	}
 
 	const addedToThread = await thread.members.add(interaction.user.id).then(() => true).catch(() => false);
 	if (!addedToThread) {
-		await thread.delete("Не удалось добавить автора заявки в промо-ветку").catch(() => {});
+		await thread.delete("Не удалось добавить автора заявки в ветку Londest Londo").catch(() => {});
 		await interaction.editReply(
-			"❌ Не удалось выдать вам доступ к промо-ветке. Проверь права на форумы/ветки у этой роли и канала."
+			"❌ Не удалось выдать вам доступ к ветке заявки. Проверь права на форумы/ветки у этой роли и канала."
 		);
 		return true;
 	}
 
 	const threadMember = await thread.members.fetch(interaction.user.id).catch(() => null);
 	if (!threadMember) {
-		await thread.delete("Автор заявки не появился в списке участников промо-ветки").catch(() => {});
+		await thread.delete("Автор заявки не появился в списке участников ветки Londest Londo").catch(() => {});
 		await interaction.editReply(
-			"❌ Discord не добавил вас в промо-ветку. Скорее всего, проблема в правах канала или веток."
+			"❌ Discord не добавил вас в ветку заявки. Скорее всего, проблема в правах канала или веток."
 		);
 		return true;
 	}
@@ -185,43 +246,38 @@ async function createPromoThread(interaction: ButtonInteraction) {
 
 	const ownerMentions = FAMILY_OWNER_ROLE_IDS.map((roleId) => `<@&${roleId}>`).join(" ");
 	const introMessage = await thread.send({
-		content: [
-			`${interaction.user} ${ownerMentions} Привет! Пожалуйста, предоставь видеозапись доказательства активации промокода \`${PROMO_CODE}\`.`,
-			"**Регистрация:**",
-			`• Перейдите по ссылке: ${PROMO_REGISTER_URL}`,
-			`• Либо введи команду на сервере: \`/promo londo\``,
-			"Обязательно должны быть видны статик персонажа и название сервера.",
-			`[Пример идеального доказательства](${PROMO_EXAMPLE_URL})`,
-		].join("\n"),
-		components: [buildDecisionButtons(0n, true)],
+		content: buildIntroContent(kind, interaction.user.toString(), ownerMentions),
+		components: [buildDecisionButtons(0n, true, kind)],
 	}).catch(() => null);
 
 	await cleanupPromoSystemMessages(thread);
 
 	const request = await createPromoRequest({
 		userId: interaction.user.id,
-		promoCode: PROMO_CODE,
+		promoCode: meta.marker,
 		channelId: channel.id,
 		threadId: thread.id,
 		requestMessageId: introMessage?.id ?? null,
 	});
 
 	if (!request) {
-		await interaction.editReply("⚠️ Таблица промо-заявок в БД пока недоступна. Примени миграцию Prisma.");
+		await interaction.editReply("⚠️ Таблица заявок в БД пока недоступна. Примени миграцию Prisma.");
 		return true;
 	}
 
 	if (introMessage) {
 		await introMessage.edit({
 			content: introMessage.content,
-			components: [buildDecisionButtons(request.id)],
+			components: [buildDecisionButtons(request.id, false, kind)],
 		}).catch(() => {});
 	}
 
 	await logPromo(
 		interaction,
-		"Новая промо-заявка",
-		`${interaction.user} создал промо-заявку в ветке <#${thread.id}>.`,
+		kind === "media" ? "Новая заявка на медиа" : "Новая заявка Londest Londo",
+		kind === "media"
+			? `${interaction.user} создал заявку на медиа в ветке <#${thread.id}>.`
+			: `${interaction.user} создал заявку на Londest Londo за взнос **${LONDEST_PAYMENT_AMOUNT}** в ветке <#${thread.id}>.`,
 		0x5865f2
 	);
 
@@ -235,18 +291,21 @@ async function resolvePromo(
 	completed: boolean,
 	declineReason?: string
 ) {
+	const request = await getPromoRequest(requestId);
+	const kind: RequestKind = request?.promoCode === MEDIA_REQUEST_MARKER ? "media" : "promo";
+	const meta = REQUEST_META[kind];
+
 	if (!hasOwnerAccess(interaction)) {
 		await interaction.reply({
-			content: "❌ Только владельцы семьи могут обрабатывать промо-заявки.",
+			content: `❌ ${meta.accessMessage}`,
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
 	}
 
-	const request = await getPromoRequest(requestId);
 	if (!request) {
 		await interaction.reply({
-			content: "❌ Промо-заявка не найдена.",
+			content: `❌ ${meta.notFoundMessage}`,
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
@@ -259,7 +318,7 @@ async function resolvePromo(
 	);
 	if (!resolved) {
 		await interaction.reply({
-			content: "ℹ️ Эта промо-заявка уже обработана.",
+			content: "ℹ️ Эта заявка уже обработана.",
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
@@ -268,7 +327,7 @@ async function resolvePromo(
 	const thread = await interaction.client.channels.fetch(request.threadId).catch(() => null);
 	const member = await interaction.guild?.members.fetch(request.userId).catch(() => null);
 
-	if (completed && member) {
+	if (kind === "promo" && completed && member) {
 		const result = await applyFamilyRankChange(member, "maecenas", "PROMOTE");
 		if (result?.changed) {
 			await createRankHistoryEntry({
@@ -280,9 +339,9 @@ async function resolvePromo(
 				targetRoleName: result.targetRoleName,
 				beforeRanks: result.beforeRanks.join(", "),
 				afterRanks: result.afterRanks.join(", "),
-				reason: "Промокод LONDO подтверждён владельцем семьи",
+				reason: `Взнос ${LONDEST_PAYMENT_AMOUNT} на счёт семьи подтверждён владельцем семьи`,
 				moderatorId: interaction.user.id,
-				source: "PROMO_REQUEST",
+				source: "LONDEST_PAYMENT_REQUEST",
 				applicantUsername: member.user.username,
 				applicantDisplayName: member.displayName,
 			}).catch(() => {});
@@ -298,49 +357,65 @@ async function resolvePromo(
 		if (requestMessage) {
 			await requestMessage.edit({
 				content: requestMessage.content,
-				components: [buildDecisionButtons(requestId, true)],
+				components: [buildDecisionButtons(requestId, true, kind)],
 			}).catch(() => {});
 		}
 
 		await thread.send(
-			completed
-				? `✅ Заявка подтверждена владельцем <@${interaction.user.id}>. Ранг **Londest Londo** и бонус **50.000$** выданы.`
+			kind === "media"
+				? (completed
+					? `✅ Заявка на медиа принята владельцем <@${interaction.user.id}>.`
+					: `❌ Заявка на медиа отклонена владельцем <@${interaction.user.id}>.\nПричина: ${declineReason ?? "Не указана"}`)
+				: completed
+				? `✅ Заявка подтверждена владельцем <@${interaction.user.id}>. Ранг **Londest Londo** выдан за взнос **${LONDEST_PAYMENT_AMOUNT}**.`
 				: `❌ Заявка отклонена владельцем <@${interaction.user.id}>.\nПричина: ${declineReason ?? "Не указана"}`
 		).catch(() => {});
 	}
 
 	const user = await interaction.client.users.fetch(request.userId).catch(() => null);
 	await user?.send(
-		completed
-			? "✅ Ваша промо-заявка подтверждена. Вам выданы ранг Londest Londo и бонус 50.000$."
-			: `❌ Ваша промо-заявка не была подтверждена.\nПричина: ${declineReason ?? "Не указана"}.`
+		kind === "media"
+			? (completed
+				? "✅ Ваша заявка на медиа принята. С вами свяжутся в ближайшее время."
+				: `❌ Ваша заявка на медиа отклонена.\nПричина: ${declineReason ?? "Не указана"}.`)
+			: completed
+			? `✅ Ваша заявка подтверждена. Вам выдан ранг Londest Londo за взнос ${LONDEST_PAYMENT_AMOUNT} на счёт семьи.`
+			: `❌ Ваша заявка на Londest Londo не была подтверждена.\nПричина: ${declineReason ?? "Не указана"}.`
 	).catch(() => {});
 
 	await logPromo(
 		interaction,
-		completed ? "Промо-заявка подтверждена" : "Промо-заявка отклонена",
-		completed
-			? `Кто обработал: <@${interaction.user.id}>\nПринял заявку у: ${user ?? `<@${request.userId}>`}`
+		kind === "media"
+			? (completed ? "Заявка на медиа принята" : "Заявка на медиа отклонена")
+			: (completed ? "Заявка Londest Londo подтверждена" : "Заявка Londest Londo отклонена"),
+		kind === "media"
+			? (completed
+				? `Кто обработал: <@${interaction.user.id}>\nПринял медиа-заявку у: ${user ?? `<@${request.userId}>`}`
+				: `Кто обработал: <@${interaction.user.id}>\nОтклонил медиа-заявку у: ${user ?? `<@${request.userId}>`}\nПричина: ${declineReason ?? "Не указана"}`)
+			: completed
+			? `Кто обработал: <@${interaction.user.id}>\nПринял заявку у: ${user ?? `<@${request.userId}>`}\nВзнос: **${LONDEST_PAYMENT_AMOUNT}**`
 			: `Кто обработал: <@${interaction.user.id}>\nОтклонил заявку у: ${user ?? `<@${request.userId}>`}\nПричина: ${declineReason ?? "Не указана"}`,
 		completed ? 0x57f287 : 0xed4245
 	);
 
 	if (interaction.deferred || interaction.replied) {
 		await interaction.editReply(
-			completed ? "✅ Промо-заявка подтверждена." : "✅ Промо-заявка отклонена."
+			completed ? "✅ Заявка подтверждена." : "✅ Заявка отклонена."
 		).catch(() => {});
 	} else {
 		await interaction.reply({
-			content: completed ? "✅ Промо-заявка подтверждена." : "✅ Промо-заявка отклонена.",
+			content: completed ? "✅ Заявка подтверждена." : "✅ Заявка отклонена.",
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 	}
 
 	if (thread?.isThread()) {
 		await thread.delete(
-			completed
-				? `Промо-заявка ${requestId.toString()} подтверждена`
-				: `Промо-заявка ${requestId.toString()} отклонена`
+			kind === "media"
+				? `Заявка на медиа ${requestId.toString()} ${completed ? "принята" : "отклонена"}`
+				: completed
+				? `Заявка Londest Londo ${requestId.toString()} подтверждена`
+				: `Заявка Londest Londo ${requestId.toString()} отклонена`
 		).catch(() => {});
 	}
 
@@ -349,7 +424,11 @@ async function resolvePromo(
 
 export async function handleFamilyPromoUI(interaction: ButtonInteraction) {
 	if (interaction.customId === CUSTOM_IDS.FAMILY_PROMO_REQUEST) {
-		return createPromoThread(interaction);
+		return createPromoThread(interaction, "promo");
+	}
+
+	if (interaction.customId === CUSTOM_IDS.FAMILY_MEDIA_REQUEST) {
+		return createPromoThread(interaction, "media");
 	}
 
 	if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_PROMO_COMPLETE)) {
@@ -361,13 +440,32 @@ export async function handleFamilyPromoUI(interaction: ButtonInteraction) {
 		const id = BigInt(interaction.customId.slice(CUSTOM_IDS.FAMILY_PROMO_DECLINE.length));
 		if (!hasOwnerAccess(interaction)) {
 			await interaction.reply({
-				content: "❌ Только владельцы семьи могут обрабатывать промо-заявки.",
+				content: "❌ Только владельцы семьи могут обрабатывать заявки Londest Londo.",
 				flags: MessageFlags.Ephemeral,
 			}).catch(() => {});
 			return true;
 		}
 
-		await interaction.showModal(buildPromoDeclineModal(id)).catch(() => {});
+		await interaction.showModal(buildPromoDeclineModal(id, "promo")).catch(() => {});
+		return true;
+	}
+
+	if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_MEDIA_COMPLETE)) {
+		const id = BigInt(interaction.customId.slice(CUSTOM_IDS.FAMILY_MEDIA_COMPLETE.length));
+		return resolvePromo(interaction, id, true);
+	}
+
+	if (interaction.customId.startsWith(CUSTOM_IDS.FAMILY_MEDIA_DECLINE)) {
+		const id = BigInt(interaction.customId.slice(CUSTOM_IDS.FAMILY_MEDIA_DECLINE.length));
+		if (!hasOwnerAccess(interaction)) {
+			await interaction.reply({
+				content: "❌ Только владельцы семьи могут обрабатывать заявки на медиа.",
+				flags: MessageFlags.Ephemeral,
+			}).catch(() => {});
+			return true;
+		}
+
+		await interaction.showModal(buildPromoDeclineModal(id, "media")).catch(() => {});
 		return true;
 	}
 
@@ -375,20 +473,28 @@ export async function handleFamilyPromoUI(interaction: ButtonInteraction) {
 }
 
 export async function handleFamilyPromoModal(interaction: ModalSubmitInteraction) {
-	if (!interaction.customId.startsWith(CUSTOM_IDS.FAMILY_PROMO_DECLINE_MODAL)) {
+	const isPromoDecline = interaction.customId.startsWith(CUSTOM_IDS.FAMILY_PROMO_DECLINE_MODAL);
+	const isMediaDecline = interaction.customId.startsWith(CUSTOM_IDS.FAMILY_MEDIA_DECLINE_MODAL);
+	if (!isPromoDecline && !isMediaDecline) {
 		return false;
 	}
 
 	if (!hasOwnerAccess(interaction as any)) {
 		await interaction.reply({
-			content: "❌ Только владельцы семьи могут обрабатывать промо-заявки.",
+			content: isMediaDecline
+				? "❌ Только владельцы семьи могут обрабатывать заявки на медиа."
+				: "❌ Только владельцы семьи могут обрабатывать заявки Londest Londo.",
 			flags: MessageFlags.Ephemeral,
 		}).catch(() => {});
 		return true;
 	}
 
 	const requestId = BigInt(
-		interaction.customId.slice(CUSTOM_IDS.FAMILY_PROMO_DECLINE_MODAL.length)
+		interaction.customId.slice(
+			isMediaDecline
+				? CUSTOM_IDS.FAMILY_MEDIA_DECLINE_MODAL.length
+				: CUSTOM_IDS.FAMILY_PROMO_DECLINE_MODAL.length
+		)
 	);
 	const reason = interaction.fields
 		.getTextInputValue(CUSTOM_IDS.FAMILY_PROMO_DECLINE_REASON_INPUT)

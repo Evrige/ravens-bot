@@ -40,7 +40,7 @@ function buildInfoPanel() {
 			`**[${index + 1}] ${entry.title}**`,
 			entry.description,
 			entry.title === "Londest Londo"
-				? `◇ ${entry.conditions}\n◇ Подать промо-заявку: <#${CHANNEL_IDS.FAMILY_PROMO}>`
+				? `◇ ${entry.conditions}\n◇ Подать заявку на Londest Londo: <#${CHANNEL_IDS.FAMILY_PROMO}>`
 				: `◇ ${entry.conditions}`,
 		].join("\n")
 	).join("\n\n");

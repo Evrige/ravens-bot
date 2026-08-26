@@ -13,6 +13,7 @@ import { CUSTOM_IDS } from "../constants/customIds";
 import { FAMILY_LONDEST_ROLE_IDS } from "../config/staff";
 
 const TYPE = "family_promo_panel";
+const MEDIA_TYPE = "family_media_panel";
 
 const V2 = {
 	ActionRow: 1,
@@ -24,10 +25,9 @@ const V2 = {
 	MediaGallery: 12,
 } as const;
 
-const PROMO_REGISTER_URL = "https://majestic-rp.ru/register?utm_campaign=londo";
-const PROMO_EXAMPLE_URL = "https://youtu.be/uf-6T81xxVI";
-const PROMO_CODE = "LONDO";
-const PROMO_BUTTON_LABEL = "👋 Я ввел промокод LONDO";
+const LONDEST_PAYMENT_AMOUNT = "350.000$";
+const PROMO_BUTTON_LABEL = "💸 Я пополнил счёт семьи";
+const MEDIA_BUTTON_LABEL = "Хочу стать медиа";
 
 const PROMO_IMAGE_NAMES = ["1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png"];
 const PROMO_IMAGE_PATHS = PROMO_IMAGE_NAMES.map((name) =>
@@ -49,39 +49,28 @@ function buildPromoPanel() {
 			{
 				type: V2.TextDisplay,
 				content:
-					`Вы можете получить доступ к всему автопарку семьи и бонусом **50.000$** с рангом ${LONDEST_ROLE_MENTION}`,
+					`Вы можете получить доступ к автопарку семьи с рангом ${LONDEST_ROLE_MENTION}`,
 			},
 			{ type: V2.Separator },
 			{
 				type: V2.TextDisplay,
 				content:
-					"> Этот ранг создан как благодарность для людей, которые поддерживают нашу семью, регистрируясь с нашим промокодом. Вы также можете повышаться в семье по стандартной системе, но для этого потребуется больше времени и доверия с нашей стороны.",
-			},
-			{ type: V2.Separator },
-			{
-				type: V2.Section,
-				components: [
-					{
-						type: V2.TextDisplay,
-						content: [
-							"**Для получения ранга Londest Londo вам нужно:**",
-							`1. Ввести на любом из серверов **Majestic RP** промокод **${PROMO_CODE}** — ${PROMO_REGISTER_URL}`,
-							"2. Записать доказательство активации промокода",
-							"3. Нажать кнопку ниже 👇",
-						].join("\n"),
-					},
-				],
-				accessory: {
-					type: V2.Button,
-					style: ButtonStyle.Link,
-					label: "Пример",
-					url: PROMO_EXAMPLE_URL,
-				},
+					"> Этот ранг создан для людей, которые финансово поддерживают семью и помогают развивать общий счёт.",
 			},
 			{ type: V2.Separator },
 			{
 				type: V2.TextDisplay,
-				content: "> Когда запись готова, нажмите кнопку ниже.",
+				content: [
+					"**Для получения ранга Londest Londo вам нужно:**",
+					`1. Положить на счёт семьи **${LONDEST_PAYMENT_AMOUNT}**`,
+					"2. Сделать скриншот или запись подтверждения пополнения",
+					"3. Нажать кнопку ниже и отправить доказательство в созданную ветку",
+				].join("\n"),
+			},
+			{ type: V2.Separator },
+			{
+				type: V2.TextDisplay,
+				content: "> Когда доказательство оплаты готово, нажмите кнопку ниже.",
 			},
 			{
 				type: V2.ActionRow,
@@ -97,7 +86,7 @@ function buildPromoPanel() {
 			{ type: V2.Separator },
 			{
 				type: V2.TextDisplay,
-				content: "**Какие авто помимо 50.000$, вас ждут**\nУдивляйтесь ниже",
+				content: "**Какие авто вас ждут**\nУдивляйтесь ниже",
 			},
 			{
 				type: V2.MediaGallery,
@@ -109,14 +98,58 @@ function buildPromoPanel() {
 	};
 }
 
+function buildMediaPanel() {
+	return {
+		type: V2.Container,
+		components: [
+			{
+				type: V2.TextDisplay,
+				content: "## Медиа Londo",
+			},
+			{
+				type: V2.TextDisplay,
+				content: "Хочешь снимать контент про Londo и развивать медиа-направление семьи? Подай заявку ниже.",
+			},
+			{ type: V2.Separator },
+			{
+				type: V2.TextDisplay,
+				content: [
+					"**В заявке нужно будет рассказать:**",
+					"1. Немного о себе",
+					"2. Ссылки на YouTube / Twitch / TikTok",
+					"3. Количество подписчиков и средние просмотры",
+					"4. Какой контент хочешь делать для семьи",
+				].join("\n"),
+			},
+			{
+				type: V2.ActionRow,
+				components: [
+					{
+						type: V2.Button,
+						style: ButtonStyle.Secondary,
+						label: MEDIA_BUTTON_LABEL,
+						custom_id: CUSTOM_IDS.FAMILY_MEDIA_REQUEST,
+					},
+				],
+			},
+		],
+	};
+}
+
 async function getPromoChannel(client: Client) {
 	const channel = await client.channels.fetch(CHANNEL_IDS.FAMILY_PROMO).catch(() => null);
 	if (!channel || channel.type !== ChannelType.GuildText) return null;
 	return channel as TextChannel;
 }
 
-async function fetchStoredMessage(channel: TextChannel) {
-	const stored = await prisma.botMessage.findUnique({ where: { type: TYPE } });
+async function getMediaChannel(client: Client) {
+	const channel = await client.channels.fetch(CHANNEL_IDS.FAMILY_MEDIA).catch(() => null);
+	if (!channel || channel.type !== ChannelType.GuildText) return null;
+	return channel as TextChannel;
+}
+
+async function fetchStoredMessage(channel: TextChannel, type: string) {
+	const stored = await prisma.botMessage.findUnique({ where: { type } });
 	if (!stored) return null;
 
 	const existingChannel = await channel.client.channels.fetch(stored.channelId).catch(() => null);
@@ -140,7 +173,7 @@ export async function upsertFamilyPromoPanel(client: Client, forceRepost = false
 		components: [buildPromoPanel()],
 	};
 
-	let message = await fetchStoredMessage(channel);
+	let message = await fetchStoredMessage(channel, TYPE);
 	if (forceRepost && message) {
 		await message.delete().catch(() => {});
 		message = null;
@@ -156,6 +189,38 @@ export async function upsertFamilyPromoPanel(client: Client, forceRepost = false
 		where: { type: TYPE },
 		update: { channelId: sent.channel.id, messageId: sent.id },
 		create: { type: TYPE, channelId: sent.channel.id, messageId: sent.id },
+	});
+
+	return { ok: true as const, mode: "created" as const, messageId: sent.id };
+}
+
+export async function upsertFamilyMediaPanel(client: Client, forceRepost = false) {
+	const channel = await getMediaChannel(client);
+	if (!channel) {
+		return { ok: false as const, reason: "channel_not_found" as const };
+	}
+
+	const payload: any = {
+		flags: MessageFlags.IsComponentsV2,
+		components: [buildMediaPanel()],
+	};
+
+	let message = await fetchStoredMessage(channel, MEDIA_TYPE);
+	if (forceRepost && message) {
+		await message.delete().catch(() => {});
+		message = null;
+	}
+
+	if (message) {
+		await message.edit(payload).catch(() => {});
+		return { ok: true as const, mode: "edited" as const, messageId: message.id };
+	}
+
+	const sent = await channel.send(payload);
+	await prisma.botMessage.upsert({
+		where: { type: MEDIA_TYPE },
+		update: { channelId: sent.channel.id, messageId: sent.id },
+		create: { type: MEDIA_TYPE, channelId: sent.channel.id, messageId: sent.id },
 	});
 
 	return { ok: true as const, mode: "created" as const, messageId: sent.id };

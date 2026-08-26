@@ -17,6 +17,8 @@ import {
 	DailyWheelInsufficientBalanceError,
 	DailyWheelSpinMode,
 	fulfillDailyWheelSpin,
+	getDailyWheelRewards,
+	resetDailyWheelCooldown,
 	sendDailyWheelLog,
 	spinDailyWheel,
 } from "../services/dailyWheelService";
@@ -26,10 +28,9 @@ import {
 } from "../services/upsertDailyWheelPanels";
 import { prisma } from "../utils/prisma";
 import {
-	DAILY_WHEEL_GIF_SPIN_MS,
 	getRewardCenterAngle,
+	renderDailyWheel,
 } from "../utils/renderDailyWheel";
-import { enqueueDailyWheelGif } from "../services/dailyWheelGifQueue";
 
 type WheelInteraction = ButtonInteraction | ModalSubmitInteraction;
 
@@ -40,6 +41,13 @@ function canManage(interaction: WheelInteraction) {
 	return [...FAMILY_OWNERS_ROLE_IDS, ...FAMILY_HIGH_ROLE_IDS].some(
 		(roleId) => roleId && member.roles.cache.has(roleId)
 	);
+}
+
+function canOwnerManage(interaction: WheelInteraction) {
+	const member = interaction.member as GuildMember | null;
+	if (!member) return false;
+
+	return FAMILY_OWNERS_ROLE_IDS.some((roleId) => roleId && member.roles.cache.has(roleId));
 }
 
 function shortInput(
@@ -150,6 +158,23 @@ async function showPaidPriceModal(interaction: ButtonInteraction) {
 					CUSTOM_IDS.DAILY_WHEEL_PAID_PRICE,
 					"Цена в монетах",
 					"Например: 500"
+				)
+			)
+		);
+
+	await interaction.showModal(modal);
+}
+
+async function showResetCooldownModal(interaction: ButtonInteraction) {
+	const modal = new ModalBuilder()
+		.setCustomId(CUSTOM_IDS.DAILY_WHEEL_MODAL_RESET_COOLDOWN)
+		.setTitle("Сбросить таймер колеса")
+		.addComponents(
+			new ActionRowBuilder<TextInputBuilder>().addComponents(
+				shortInput(
+					CUSTOM_IDS.DAILY_WHEEL_USER_ID,
+					"ID или упоминание пользователя",
+					"Например: 123456789012345678 или @user"
 				)
 			)
 		);
@@ -418,6 +443,33 @@ async function handlePaidPrice(interaction: ModalSubmitInteraction) {
 	);
 }
 
+function parseUserId(value: string) {
+	const match = value.trim().match(/\d{17,20}/);
+	return match?.[0] ?? null;
+}
+
+async function handleResetCooldown(interaction: ModalSubmitInteraction) {
+	const userId = parseUserId(
+		interaction.fields.getTextInputValue(CUSTOM_IDS.DAILY_WHEEL_USER_ID)
+	);
+
+	if (!userId) {
+		await interaction.reply({
+			content: "❌ Укажите корректный ID или упоминание пользователя.",
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+	const deleted = await resetDailyWheelCooldown(userId);
+	await interaction.editReply(
+		deleted.count
+			? `✅ Таймер колеса для <@${userId}> сброшен. Пользователь может крутить бесплатно.`
+			: `ℹ️ У <@${userId}> не было активного таймера колеса.`
+	);
+}
+
 async function handleEditReward(interaction: ModalSubmitInteraction) {
 	const id = Number(
 		interaction.fields.getTextInputValue(CUSTOM_IDS.DAILY_WHEEL_REWARD_ID).trim()
@@ -546,14 +598,6 @@ async function animateSpin(
 		Math.PI * 2 * 7 + (-Math.PI / 2 - rewardCenter);
 	await interaction.editReply("🎡 Подготавливаем колесо...");
 
-	const animation = await enqueueDailyWheelGif({
-		rewards: result.visualRewards,
-		targetRotation,
-		result: result.reward,
-	});
-	const attachment = new AttachmentBuilder(animation, {
-		name: `daily-wheel-${result.spinId.toString()}.gif`,
-	});
 	const content =
 		result.reward.rewardType === "COINS"
 			? `🎉 Вы выиграли **${result.reward.amount?.toLocaleString("ru-RU")} монет**! Награда уже начислена.`
@@ -561,20 +605,37 @@ async function animateSpin(
 				? `🎉 Вы выиграли **${result.reward.name}**! Заявка на выдачу отправлена администрации.`
 				: "Сегодня колесо остановилось на секторе **Без выигрыша**. Завтра повезёт больше!";
 
-	await interaction.editReply({
-		content: "🎡 Колесо вращается...",
-		attachments: [],
-		files: [attachment],
-	});
+	try {
+		const image = await renderDailyWheel(
+			result.visualRewards,
+			targetRotation,
+			result.reward
+		);
+		const attachment = new AttachmentBuilder(image, {
+			name: `daily-wheel-${result.spinId.toString()}.png`,
+		});
 
-	await new Promise((resolve) => setTimeout(resolve, DAILY_WHEEL_GIF_SPIN_MS));
-	await interaction.editReply({ content });
+		await interaction.editReply({
+			content,
+			attachments: [],
+			files: [attachment],
+		});
+	} catch (error) {
+		console.error("[daily-wheel] image failed:", error);
+		await interaction.editReply({
+			content: `${content}\n\n⚠️ Картинка не загрузилась, но вращение засчитано корректно.`,
+			attachments: [],
+			files: [],
+		}).catch(() => {});
+	}
 
 	await sendDailyWheelLog(
 		interaction.client,
 		result,
 		interaction.user.id
-	);
+	).catch((error) => {
+		console.error("[daily-wheel] log send failed:", error);
+	});
 
 	const dmEmbed = new EmbedBuilder()
 		.setColor(
@@ -596,7 +657,88 @@ async function animateSpin(
 		})
 		.setTimestamp();
 
-	await interaction.user.send({ embeds: [dmEmbed] }).catch(() => {});
+	await interaction.user.send({ embeds: [dmEmbed] }).catch((error) => {
+		console.error("[daily-wheel] dm send failed:", error);
+	});
+}
+
+function formatChance(value: number) {
+	return `${value.toFixed(2).replace(/\.?0+$/, "")}%`;
+}
+
+async function showWheelStats(interaction: ButtonInteraction) {
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+	const rewards = await getDailyWheelRewards();
+	const totalChance = rewards.reduce((sum, reward) => sum + reward.chance, 0);
+	const noWinChance = Math.max(0, 100 - totalChance);
+	const spinStats = await prisma.dailyWheelSpin.groupBy({
+		by: ["rewardId", "rewardName", "rewardType"],
+		_count: { _all: true },
+	});
+	const totalSpins = spinStats.reduce((sum, row) => sum + row._count._all, 0);
+	const countByRewardId = new Map<number, number>();
+	let noWinCount = 0;
+
+	for (const row of spinStats) {
+		if (row.rewardType === "NONE") {
+			noWinCount += row._count._all;
+			continue;
+		}
+
+		if (row.rewardId !== null) {
+			countByRewardId.set(
+				row.rewardId,
+				(countByRewardId.get(row.rewardId) ?? 0) + row._count._all
+			);
+		}
+	}
+
+	if (!rewards.length) {
+		await interaction.editReply("📊 В колесе пока нет наград.");
+		return;
+	}
+
+	const lines = rewards.map((reward) => {
+		const type =
+			reward.rewardType === "COINS"
+				? `🪙 ${reward.amount?.toLocaleString("ru-RU") ?? 0} монет`
+				: "🎁 ручная выдача";
+		const count = countByRewardId.get(reward.id) ?? 0;
+		return `**${reward.name}** — ${formatChance(reward.chance)} — выпало **${count.toLocaleString("ru-RU")}** — ${type}`;
+	});
+
+	if (noWinChance > 0) {
+		lines.push(
+			`**Без выигрыша** — ${formatChance(noWinChance)} — выпало **${noWinCount.toLocaleString("ru-RU")}** — пустой сектор`
+		);
+	}
+
+	const embed = new EmbedBuilder()
+		.setColor(totalChance > 100 ? 0xed4245 : 0xa855f7)
+		.setTitle("📊 Статистика наград колеса")
+		.setDescription(lines.join("\n").slice(0, 3900))
+		.addFields(
+			{
+				name: "Сумма шансов",
+				value: formatChance(totalChance),
+				inline: true,
+			},
+			{
+				name: "Без выигрыша",
+				value: totalChance > 100 ? "Настроено больше 100%" : formatChance(noWinChance),
+				inline: true,
+			},
+			{
+				name: "Всего вращений",
+				value: totalSpins.toLocaleString("ru-RU"),
+				inline: true,
+			}
+		)
+		.setFooter({ text: "Сообщение видно только вам" })
+		.setTimestamp();
+
+	await interaction.editReply({ embeds: [embed] });
 }
 
 async function handleFulfill(interaction: ButtonInteraction) {
@@ -653,15 +795,19 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 	const isKnown =
 		customId === CUSTOM_IDS.DAILY_WHEEL_SPIN ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_PAID_SPIN ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_STATS ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_IMAGE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_STATS ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_RESET_COOLDOWN ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_DELETE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_IMAGE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_RESET_COOLDOWN ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_DELETE ||
 		customId.startsWith(CUSTOM_IDS.DAILY_WHEEL_FULFILL);
 
@@ -682,16 +828,25 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_IMAGE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_STATS ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_RESET_COOLDOWN ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_DELETE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_ADD ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_EDIT ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_IMAGE ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE ||
+		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_RESET_COOLDOWN ||
 		customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_DELETE
 	) {
-		if (!canManage(interaction)) {
+		const needsOwner =
+			customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_RESET_COOLDOWN ||
+			customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_RESET_COOLDOWN;
+
+		if (needsOwner ? !canOwnerManage(interaction) : !canManage(interaction)) {
 			await interaction.reply({
-				content: "❌ У вас нет прав для управления колесом.",
+				content: needsOwner
+					? "❌ Сбрасывать таймер колеса могут только овнеры."
+					: "❌ У вас нет прав для управления колесом.",
 				flags: MessageFlags.Ephemeral,
 			});
 			return true;
@@ -710,6 +865,12 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 		}
 		if (customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_PRICE) {
 			await showPaidPriceModal(interaction);
+		}
+		if (customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_RESET_COOLDOWN) {
+			await showResetCooldownModal(interaction);
+		}
+		if (customId === CUSTOM_IDS.DAILY_WHEEL_STATS) {
+			await showWheelStats(interaction);
 		}
 		if (customId === CUSTOM_IDS.DAILY_WHEEL_ADMIN_DELETE) {
 			await showDeleteRewardModal(interaction);
@@ -731,6 +892,9 @@ export async function handleDailyWheelUI(interaction: WheelInteraction) {
 	}
 	if (customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_PRICE) {
 		await handlePaidPrice(interaction);
+	}
+	if (customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_RESET_COOLDOWN) {
+		await handleResetCooldown(interaction);
 	}
 	if (customId === CUSTOM_IDS.DAILY_WHEEL_MODAL_DELETE) {
 		await handleDeleteReward(interaction);

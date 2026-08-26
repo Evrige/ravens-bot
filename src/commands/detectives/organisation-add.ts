@@ -8,6 +8,8 @@ import {
 import { prisma } from "../../utils/prisma";
 import { config } from "../../config/env";
 import { resetHivePanel } from "../../services/upsertHivePanel";
+import { upsertFamilyListPanel } from "../../services/upsertFamilyListPanel";
+import { upsertFactionListPanel } from "../../services/upsertFactionListPanel";
 
 function getForumIdByType(type: "FAMILY" | "FRACTION") {
 	return type === "FAMILY"
@@ -130,12 +132,18 @@ export const organisationAddCommand = {
 			data: { channelId: thread.id },
 		});
 
-		// 4️⃣ обновляем панель
+		// 4️⃣ обновляем панели
+		const listPanel = type === "FAMILY"
+			? await upsertFamilyListPanel(interaction.client)
+			: await upsertFactionListPanel(interaction.client);
 		const refreshed = await resetHivePanel(interaction.client);
 
 		return interaction.editReply(
 			`✅ Организация **${name}** создана.\n` +
 			`📌 В форуме создан тред: **${thread.name}**.\n` +
+			(listPanel.ok
+				? `🔄 Список ${type === "FAMILY" ? "семей" : "фракций"} обновлён.\n`
+				: `⚠️ Список ${type === "FAMILY" ? "семей" : "фракций"} не обновлён: **${listPanel.reason ?? "unknown"}**\n`) +
 			(refreshed.ok
 				? `🔄 Панель улик обновлена.`
 				: `⚠️ Панель улик не обновлена: **${refreshed.reason ?? "unknown"}**`)

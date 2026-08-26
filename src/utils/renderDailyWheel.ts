@@ -11,9 +11,9 @@ export type WheelVisualReward = {
 	imageUrl?: string | null;
 };
 
-const SIZE = 900;
+const SIZE = 620;
 const CENTER = SIZE / 2;
-const RADIUS = 345;
+const RADIUS = SIZE * 0.383;
 const COLORS = [
 	"#7C3AED",
 	"#EC4899",
@@ -24,8 +24,8 @@ const COLORS = [
 	"#3B82F6",
 	"#6366F1",
 ];
-const GIF_FRAME_COUNT = 48;
-const GIF_FRAME_DELAY_MS = 110;
+const GIF_FRAME_COUNT = 26;
+const GIF_FRAME_DELAY_MS = 170;
 export const DAILY_WHEEL_GIF_SPIN_MS =
 	(GIF_FRAME_COUNT - 1) * GIF_FRAME_DELAY_MS + 250;
 const imageCache = new Map<string, Promise<any | null>>();
@@ -149,9 +149,9 @@ export async function renderDailyWheel(
 	ctx.save();
 	ctx.translate(CENTER, CENTER);
 	ctx.shadowColor = "rgba(168, 85, 247, 0.8)";
-	ctx.shadowBlur = 45;
+	ctx.shadowBlur = SIZE * 0.05;
 	ctx.beginPath();
-	ctx.arc(0, 0, RADIUS + 22, 0, Math.PI * 2);
+	ctx.arc(0, 0, RADIUS + SIZE * 0.024, 0, Math.PI * 2);
 	ctx.fillStyle = "#E9D5FF";
 	ctx.fill();
 	ctx.restore();
@@ -169,7 +169,7 @@ export async function renderDailyWheel(
 		ctx.fillStyle = reward.rewardType === "NONE" ? "#374151" : COLORS[index % COLORS.length];
 		ctx.fill();
 		ctx.strokeStyle = "rgba(255,255,255,0.75)";
-		ctx.lineWidth = 4;
+		ctx.lineWidth = Math.max(2, SIZE * 0.0045);
 		ctx.stroke();
 
 		if (arc >= 0.11) {
@@ -181,7 +181,7 @@ export async function renderDailyWheel(
 				: null;
 
 			if (image && arc >= 0.2) {
-				const imageSize = Math.max(52, Math.min(118, RADIUS * arc * 0.7));
+				const imageSize = Math.max(SIZE * 0.058, Math.min(SIZE * 0.13, RADIUS * arc * 0.7));
 				drawContainedImage(
 					ctx,
 					image,
@@ -199,7 +199,7 @@ export async function renderDailyWheel(
 				);
 				ctx.rotate(middle + Math.PI / 2);
 				if (middle > Math.PI / 2 && middle < Math.PI * 1.5) ctx.rotate(Math.PI);
-				const size = fitText(ctx, label, maxWidth, 27);
+				const size = fitText(ctx, label, maxWidth, SIZE * 0.03);
 				ctx.font = `700 ${size}px Arial`;
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
@@ -215,37 +215,44 @@ export async function renderDailyWheel(
 	}
 
 	ctx.beginPath();
-	ctx.arc(CENTER, CENTER, 105, 0, Math.PI * 2);
-	const hub = ctx.createRadialGradient(CENTER - 25, CENTER - 30, 10, CENTER, CENTER, 110);
+	ctx.arc(CENTER, CENTER, SIZE * 0.117, 0, Math.PI * 2);
+	const hub = ctx.createRadialGradient(
+		CENTER - SIZE * 0.028,
+		CENTER - SIZE * 0.033,
+		SIZE * 0.011,
+		CENTER,
+		CENTER,
+		SIZE * 0.122
+	);
 	hub.addColorStop(0, "#F5D0FE");
 	hub.addColorStop(0.35, "#A855F7");
 	hub.addColorStop(1, "#4C1D95");
 	ctx.fillStyle = hub;
 	ctx.fill();
 	ctx.strokeStyle = "#FFFFFF";
-	ctx.lineWidth = 7;
+	ctx.lineWidth = Math.max(3, SIZE * 0.0078);
 	ctx.stroke();
 
 	ctx.fillStyle = "#FFFFFF";
 	ctx.textAlign = "center";
-	ctx.font = "800 30px Arial";
-	ctx.fillText("LONDO", CENTER, CENTER - 8);
-	ctx.font = "700 18px Arial";
+	ctx.font = `800 ${SIZE * 0.033}px Arial`;
+	ctx.fillText("LONDO", CENTER, CENTER - SIZE * 0.009);
+	ctx.font = `700 ${SIZE * 0.02}px Arial`;
 	ctx.fillStyle = "#F3E8FF";
-	ctx.fillText("DAILY WHEEL", CENTER, CENTER + 25);
+	ctx.fillText("DAILY WHEEL", CENTER, CENTER + SIZE * 0.028);
 
 	ctx.beginPath();
-	ctx.moveTo(CENTER, 58);
-	ctx.lineTo(CENTER - 34, 15);
-	ctx.lineTo(CENTER + 34, 15);
+	ctx.moveTo(CENTER, SIZE * 0.064);
+	ctx.lineTo(CENTER - SIZE * 0.038, SIZE * 0.017);
+	ctx.lineTo(CENTER + SIZE * 0.038, SIZE * 0.017);
 	ctx.closePath();
 	ctx.fillStyle = "#FACC15";
 	ctx.shadowColor = "rgba(250, 204, 21, 0.9)";
-	ctx.shadowBlur = 18;
+	ctx.shadowBlur = SIZE * 0.02;
 	ctx.fill();
 	ctx.shadowBlur = 0;
 	ctx.strokeStyle = "#FFFFFF";
-	ctx.lineWidth = 4;
+	ctx.lineWidth = Math.max(2, SIZE * 0.0045);
 	ctx.stroke();
 
 	if (result) {
@@ -253,12 +260,16 @@ export async function renderDailyWheel(
 			? "Сегодня без выигрыша"
 			: `Вы выиграли: ${formatReward(result)}`;
 		ctx.fillStyle = "rgba(9, 9, 11, 0.88)";
-		ctx.fillRect(95, 790, 710, 72);
-		const fontSize = fitText(ctx, text, 650, 32, 20);
+		const bannerX = SIZE * 0.106;
+		const bannerY = SIZE * 0.878;
+		const bannerW = SIZE * 0.789;
+		const bannerH = SIZE * 0.08;
+		ctx.fillRect(bannerX, bannerY, bannerW, bannerH);
+		const fontSize = fitText(ctx, text, SIZE * 0.72, SIZE * 0.036, SIZE * 0.022);
 		ctx.font = `800 ${fontSize}px Arial`;
 		ctx.fillStyle = result.rewardType === "NONE" ? "#D1D5DB" : "#FDE68A";
 		ctx.textAlign = "center";
-		ctx.fillText(text, CENTER, 837);
+		ctx.fillText(text, CENTER, bannerY + bannerH * 0.65);
 	}
 
 	return canvas.toBuffer("image/png");

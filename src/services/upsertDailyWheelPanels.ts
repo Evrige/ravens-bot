@@ -133,6 +133,24 @@ async function buildAdminPanel() {
 					},
 				],
 			},
+			{
+				type: V2.ActionRow,
+				components: [
+					{
+						type: V2.Button,
+						style: ButtonStyle.Secondary,
+						label: "Сбросить таймер",
+						custom_id: CUSTOM_IDS.DAILY_WHEEL_ADMIN_RESET_COOLDOWN,
+					},
+					{
+						type: V2.Button,
+						style: ButtonStyle.Secondary,
+						label: "Статистика наград",
+						emoji: { name: "📊" },
+						custom_id: CUSTOM_IDS.DAILY_WHEEL_STATS,
+					},
+				],
+			},
 		],
 	};
 }

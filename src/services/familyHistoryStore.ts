@@ -370,8 +370,22 @@ export async function listRankHistoryByUser(userId: string, limit = 50) {
 	}
 }
 
-export async function getActivePromoRequestByUser(userId: string) {
+export async function getActivePromoRequestByUser(userId: string, promoCode?: string) {
 	try {
+		if (promoCode) {
+			const [row] = await prisma.$queryRaw<PromoRequestRecord[]>`
+				SELECT *
+				FROM "PromoRequest"
+				WHERE "userId" = ${userId}
+				  AND "promoCode" = ${promoCode}
+				  AND "status" = 'PENDING'::"PromoRequestStatus"
+				ORDER BY "createdAt" DESC
+				LIMIT 1
+			`;
+
+			return row ?? null;
+		}
+
 		const [row] = await prisma.$queryRaw<PromoRequestRecord[]>`
 			SELECT *
 			FROM "PromoRequest"

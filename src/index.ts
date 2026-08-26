@@ -40,6 +40,7 @@ import {startStaffListUpdater} from "./services/startStaffListUpdater";
 import {initTempVoice} from "./tempvoice/tempVoice";
 import {organisationAddCommand} from "./commands/detectives/organisation-add";
 import {upsertFamilyListPanel} from "./services/upsertFamilyListPanel";
+import {upsertFactionListPanel} from "./services/upsertFactionListPanel";
 import {hiveStatsCommand} from "./commands/detectives/hive-stats";
 import {startHiveStatsUpdater} from "./services/startHiveStatsUpdater";
 import {weeklyFeeAddCommand} from "./commands/ravens-family/weekly-fee-add";
@@ -73,7 +74,7 @@ import { startFamilyVacationWatcher } from "./services/startFamilyVacationWatche
 import { upsertFamilyVacationPanel } from "./services/upsertFamilyVacationPanel";
 import { rankCommand } from "./commands/ravens-family/rank";
 import { recruitPerformanceCommand } from "./commands/ravens-family/recruit-performance";
-import { upsertFamilyPromoPanel } from "./services/upsertFamilyPromoPanel";
+import { upsertFamilyMediaPanel, upsertFamilyPromoPanel } from "./services/upsertFamilyPromoPanel";
 import { autoDeclineFamilyApplicationsForUserLeave } from "./handlers/application/ravens-family/processFamilyApplication";
 import { initFamilyInterviewVoiceTracker } from "./services/familyInterviewVoiceTracker";
 import { coinflipCommand } from "./commands/ravens-family/coinflip";
@@ -92,6 +93,8 @@ import {
 } from "./services/botLogger";
 import { upsertStreamerPanel } from "./services/upsertStreamerPanel";
 import { upsertDailyWheelPanels } from "./services/upsertDailyWheelPanels";
+import { dailyWheelResetCommand } from "./commands/ravens-family/daily-wheel-reset";
+import { startDailyWheelCooldownNotifier } from "./services/startDailyWheelCooldownNotifier";
 dotenv.config();
 installBotConsoleBridge();
 
@@ -181,6 +184,7 @@ const familyCommands = [
 	diceCommand.data.toJSON(),
 	gamesCommand.data.toJSON(),
 	rankCommand.data.toJSON(),
+	dailyWheelResetCommand.data.toJSON(),
 ];
 
 const hiveCommands = [
@@ -290,11 +294,13 @@ client.once("ready", async () => {
 	await runStartupTask("startMarketOrdersPanelUpdater", () => startMarketOrdersPanelUpdater(client));
 	await runStartupTask("startFamilyGamesUpdater", () => startFamilyGamesUpdater(client));
 	await runStartupTask("startFactionRolesUpdater", () => startFactionRolesUpdater(client));
+	await runStartupTask("startDailyWheelCooldownNotifier", () => startDailyWheelCooldownNotifier(client));
 	await runStartupTask("initVoiceTracker", () => initVoiceTracker(client));
 	await runStartupTask("initFamilyInterviewVoiceTracker", () => initFamilyInterviewVoiceTracker(client));
 	await runStartupTask("initMessageTracker", () => initMessageTracker(client));
 	await runStartupTask("initTempVoice", () => initTempVoice(client));
 	await runStartupTask("upsertFamilyListPanel", () => upsertFamilyListPanel(client));
+	await runStartupTask("upsertFactionListPanel", () => upsertFactionListPanel(client));
 	await runStartupTask("upsertFamilyAfkPanel", () => upsertFamilyAfkPanel(client));
 	await runStartupTask("upsertFamilyVacationPanel", () => upsertFamilyVacationPanel(client));
 	await runStartupTask("upsertGiveawayPanel", () => upsertGiveawayPanel(client));
@@ -307,6 +313,7 @@ client.once("ready", async () => {
 	await runStartupTask("refreshExistingHiveForumSummaries", () => refreshExistingHiveForumSummaries(client));
 	await runStartupTask("upsertFamilyImprovementPanels", () => upsertFamilyImprovementPanels(client));
 	await runStartupTask("upsertFamilyPromoPanel", () => upsertFamilyPromoPanel(client));
+	await runStartupTask("upsertFamilyMediaPanel", () => upsertFamilyMediaPanel(client));
 	await runStartupTask("restoreCoinflipChallenges", () => restoreCoinflipChallenges(client));
 	await runStartupTask("restoreDiceChallenges", () => restoreDiceChallenges(client));
 	await runStartupTask("startRecruitStatsUpdater", () => startRecruitStatsUpdater());
